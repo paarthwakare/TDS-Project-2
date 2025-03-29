@@ -456,6 +456,65 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "analyze_sentiment",
+                "description": "Analyze sentiment of text using OpenAI API",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "Text to analyze for sentiment",
+                        },
+                        "api_key": {
+                            "type": "string",
+                            "description": "Optional API key for OpenAI",
+                        },
+                    },
+                    "required": ["text"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "count_tokens",
+                "description": "Count tokens in a message sent to OpenAI API",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "Text to count tokens for",
+                        },
+                    },
+                    "required": ["text"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_structured_output",
+                "description": "Generate structured JSON output using OpenAI API",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "Prompt for generating structured output",
+                        },
+                        "structure_type": {
+                            "type": "string",
+                            "description": "Type of structure to generate (e.g., addresses, products)",
+                        },
+                    },
+                    "required": ["prompt", "structure_type"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -624,6 +683,22 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                         model_name=function_args.get(
                             "model_name", "Llama-3.2-1B-Instruct.Q6_K.llamafile"
                         ),
+                    )
+                elif function_name == "analyze_sentiment":
+                    answer = await analyze_sentiment(
+                        text=function_args.get("text"),
+                        api_key=function_args.get("api_key", "dummy_api_key"),
+                    )
+
+                elif function_name == "count_tokens":
+                    answer = await count_tokens(
+                        text=function_args.get("text"),
+                    )
+
+                elif function_name == "generate_structured_output":
+                    answer = await generate_structured_output(
+                        prompt=function_args.get("prompt"),
+                        structure_type=function_args.get("structure_type"),
                     )
 
                 # Break after the first function call is executed

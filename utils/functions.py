@@ -966,3 +966,165 @@ async def setup_llamafile_with_ngrok(
         return instructions
     except Exception as e:
         return f"Error generating Llamafile setup instructions: {str(e)}"
+
+async def analyze_sentiment(text: str, api_key: str = "dummy_api_key") -> str:
+    """
+    Analyze sentiment of text using OpenAI API
+    """
+    import httpx
+    import json
+
+    url = "https://api.openai.com/v1/chat/completions"
+
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {
+                "role": "system",
+                "content": "Analyze the sentiment of the following text and classify it as GOOD, BAD, or NEUTRAL.",
+            },
+            {"role": "user", "content": text},
+        ],
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+
+            # Extract the sentiment analysis result
+            sentiment = result["choices"][0]["message"]["content"]
+
+            return f"""
+# Sentiment Analysis Result
+
+## Input Text
+
+## Analysis
+{sentiment}
+
+## API Request Details
+- Model: gpt-4o-mini
+- API Endpoint: {url}
+- Request Type: POST
+"""
+    except Exception as e:
+        return f"Error analyzing sentiment: {str(e)}"
+
+
+async def count_tokens(text: str) -> str:
+    """
+    Count tokens in a message sent to OpenAI API
+    """
+    import httpx
+    import json
+
+    url = "https://api.openai.com/v1/chat/completions"
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer dummy_api_key",
+    }
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": text}],
+        "max_tokens": 1,  # Minimize response tokens
+    }
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            result = response.json()
+
+            # Extract token count from usage information
+            prompt_tokens = result.get("usage", {}).get("prompt_tokens", 0)
+
+            return f"""
+# Token Count Analysis
+
+## Input Text
+
+## Token Count
+The input message uses **{prompt_tokens} tokens**.
+
+## API Request Details
+- Model: gpt-4o-mini
+- API Endpoint: {url}
+- Request Type: POST
+"""
+    except Exception as e:
+        return f"Error counting tokens: {str(e)}"
+
+
+async def generate_structured_output(prompt: str, structure_type: str) -> str:
+    """
+    Generate structured JSON output using OpenAI API
+    """
+    import json
+
+    # Example for addresses structure
+    if structure_type.lower() == "addresses":
+        request_body = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": "Respond in JSON"},
+                {"role": "user", "content": prompt},
+            ],
+            "response_format": {
+                "type": "json_object",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "addresses": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "latitude": {"type": "number"},
+                                    "city": {"type": "string"},
+                                    "apartment": {"type": "string"},
+                                },
+                                "required": ["latitude", "city", "apartment"],
+                            },
+                        }
+                    },
+                    "required": ["addresses"],
+                    "additionalProperties": False,
+                },
+            },
+        }
+    else:
+        # Generic structure for other types
+        request_body = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {"role": "system", "content": "Respond in JSON"},
+                {"role": "user", "content": prompt},
+            ],
+            "response_format": {"type": "json_object"},
+        }
+
+    # Format the JSON nicely
+    formatted_json = json.dumps(request_body, indent=2)
+
+    return f"""
+# Structured Output Request Body
+
+The following JSON body can be sent to the OpenAI API to generate structured output for "{prompt}":
+
+```json
+{formatted_json}
+```
+
+## Request Details
+- Model: gpt-4o-mini
+- Structure Type: {structure_type}
+- API Endpoint: https://api.openai.com/v1/chat/completions
+- Request Type: POST
+This request is configured to return a structured JSON response that follows the specified schema.
+"""
