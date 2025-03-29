@@ -967,6 +967,7 @@ async def setup_llamafile_with_ngrok(
     except Exception as e:
         return f"Error generating Llamafile setup instructions: {str(e)}"
 
+
 async def analyze_sentiment(text: str, api_key: str = "dummy_api_key") -> str:
     """
     Analyze sentiment of text using OpenAI API
@@ -1128,3 +1129,336 @@ The following JSON body can be sent to the OpenAI API to generate structured out
 - Request Type: POST
 This request is configured to return a structured JSON response that follows the specified schema.
 """
+
+
+async def count_cricket_ducks(page_number: int = 3) -> str:
+    """
+    Count the number of ducks in ESPN Cricinfo ODI batting stats for a specific page
+
+    Args:
+        page_number: Page number to analyze (default: 3)
+
+    Returns:
+        Total number of ducks on the specified page
+    """
+    try:
+        import pandas as pd
+        import httpx
+        from bs4 import BeautifulSoup
+
+        # Construct the URL for the specified page
+        url = f"https://stats.espncricinfo.com/ci/engine/stats/index.html?class=2;page={page_number};template=results;type=batting"
+
+        # Fetch the page content
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            html_content = response.text
+
+        # Parse the HTML
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        # Find the main stats table
+        tables = soup.find_all("table", class_="engineTable")
+        stats_table = None
+
+        for table in tables:
+            if table.find("th", string="Player"):
+                stats_table = table
+                break
+
+        if not stats_table:
+            return "Could not find the batting stats table on the page."
+
+        # Extract the table headers
+        headers = [th.get_text(strip=True) for th in stats_table.find_all("th")]
+
+        # Find the index of the "0" column (ducks)
+        duck_col_index = None
+        for i, header in enumerate(headers):
+            if header == "0":
+                duck_col_index = i
+                break
+
+        if duck_col_index is None:
+            return "Could not find the '0' (ducks) column in the table."
+
+        # Extract the data rows
+        rows = stats_table.find_all("tr", class_="data1")
+
+        # Sum the ducks
+        total_ducks = 0
+        for row in rows:
+            cells = row.find_all("td")
+            if len(cells) > duck_col_index:
+                duck_value = cells[duck_col_index].get_text(strip=True)
+                if duck_value and duck_value.isdigit():
+                    total_ducks += int(duck_value)
+
+        return f"""
+# Cricket Analysis: Ducks Count
+
+## Data Source
+ESPN Cricinfo ODI batting stats, page {page_number}
+
+## Analysis
+The total number of ducks across all players on page {page_number} is: **{total_ducks}**
+
+## Method
+- Extracted the batting statistics table from ESPN Cricinfo
+- Located the column representing ducks (titled "0")
+- Summed all values in this column
+"""
+    except Exception as e:
+        return f"Error counting cricket ducks: {str(e)}"
+
+
+async def get_imdb_movies(
+    min_rating: float = 7.0, max_rating: float = 8.0, limit: int = 25
+) -> str:
+    """
+    Get movie information from IMDb with ratings in a specific range
+
+    Args:
+        min_rating: Minimum rating to filter by
+        max_rating: Maximum rating to filter by
+        limit: Maximum number of movies to return
+
+    Returns:
+        JSON data of movies with their ID, title, year, and rating
+    """
+    try:
+        import httpx
+        from bs4 import BeautifulSoup
+        import json
+        import re
+
+        # Construct the URL with the rating filter
+        url = f"https://www.imdb.com/search/title/?title_type=feature&user_rating={min_rating},{max_rating}&sort=user_rating,desc"
+
+        # Set headers to mimic a browser request
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+
+        # Fetch the page content
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            html_content = response.text
+
+        # Parse the HTML
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        # Find all movie items
+        movie_items = soup.find_all("div", class_="lister-item-content")
+
+        # Extract movie data
+        movies = []
+        for item in movie_items[:limit]:
+            # Get the movie title and year
+            title_element = item.find("h3", class_="lister-item-header").find("a")
+            title = title_element.get_text(strip=True)
+
+            # Extract the movie ID from the href attribute
+            href = title_element.get("href", "")
+            id_match = re.search(r"/title/(tt\d+)/", href)
+            movie_id = id_match.group(1) if id_match else ""
+
+            # Extract the year
+            year_element = item.find("span", class_="lister-item-year")
+            year_text = year_element.get_text(strip=True) if year_element else ""
+            year_match = re.search(r"\((\d{4})\)", year_text)
+            year = year_match.group(1) if year_match else ""
+
+            # Extract the rating
+            rating_element = item.find("div", class_="ratings-imdb-rating")
+            rating = rating_element.get("data-value", "") if rating_element else ""
+
+            # Add to the movies list
+            if movie_id and title:
+                movies.append(
+                    {"id": movie_id, "title": title, "year": year, "rating": rating}
+                )
+
+        # Convert to JSON
+        movies_json = json.dumps(movies, indent=2)
+
+        return f"""
+# IMDb Movie Data
+
+## Filter Criteria
+- Minimum Rating: {min_rating}
+- Maximum Rating: {max_rating}
+- Limit: {limit} movies
+
+## Results
+```json
+{movies_json}
+```
+## Summary
+Retrieved {len(movies)} movies with ratings between {min_rating} and {max_rating}.
+"""
+    except Exception as e:
+        return f"Error retrieving IMDb movies: {str(e)}"
+
+
+async def generate_country_outline(country: str) -> str:
+    """
+    Generate a Markdown outline from Wikipedia headings for a country
+
+    Args:
+        country: Name of the country
+
+    Returns:
+        Markdown outline of the country's Wikipedia page
+    """
+    try:
+        import httpx
+        from bs4 import BeautifulSoup
+        import urllib.parse
+
+        # Format the country name for the URL
+        formatted_country = urllib.parse.quote(country.replace(" ", "_"))
+        url = f"https://en.wikipedia.org/wiki/{formatted_country}"
+
+        # Fetch the Wikipedia page
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            html_content = response.text
+
+        # Parse the HTML
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        # Get the page title (country name)
+        title = soup.find("h1", id="firstHeading").get_text(strip=True)
+
+        # Find all headings (h1 to h6)
+        headings = soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
+
+        # Generate the Markdown outline
+        outline = [f"# {title}"]
+        outline.append("\n## Contents\n")
+
+        for heading in headings:
+            if heading.get("id") != "firstHeading":  # Skip the page title
+                # Determine the heading level
+                level = int(heading.name[1])
+
+                # Get the heading text
+                text = heading.get_text(strip=True)
+
+                # Skip certain headings like "References", "External links", etc.
+                skip_headings = [
+                    "References",
+                    "External links",
+                    "See also",
+                    "Notes",
+                    "Citations",
+                    "Bibliography",
+                ]
+                if any(skip in text for skip in skip_headings):
+                    continue
+
+                # Add the heading to the outline with appropriate indentation
+                outline.append(f"{'#' * level} {text}")
+
+        # Join the outline into a single string
+        markdown_outline = "\n\n".join(outline)
+
+        return f"""
+# Wikipedia Outline Generator
+
+## Country
+{country}
+
+## Markdown Outline
+{markdown_outline}
+
+## API Endpoint Example
+/api/outline?country={urllib.parse.quote(country)}
+"""
+    except Exception as e:
+        return f"Error generating country outline: {str(e)}"
+
+
+async def get_weather_forecast(city: str) -> str:
+    """
+    Get weather forecast for a city using BBC Weather API
+
+    Args:
+        city: Name of the city
+
+    Returns:
+        JSON data of weather forecast with dates and descriptions
+    """
+    try:
+        import httpx
+        import json
+
+        # Step 1: Get the location ID for the city
+        locator_url = "https://locator-service.api.bbci.co.uk/locations"
+        params = {
+            "api_key": "AGbFAKx58hyjQScCXIYrxuEwJh2W2cmv",  # This is a public API key used by BBC
+            "stack": "aws",
+            "locale": "en-GB",
+            "filter": "international",
+            "place-types": "settlement,airport,district",
+            "order": "importance",
+            "a": city,
+            "format": "json",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Get location ID
+            response = await client.get(locator_url, params=params)
+            response.raise_for_status()
+            location_data = response.json()
+
+            if (
+                not location_data.get("locations")
+                or len(location_data["locations"]) == 0
+            ):
+                return f"Could not find location ID for {city}"
+
+            location_id = location_data["locations"][0]["id"]
+
+            # Step 2: Get the weather forecast using the location ID
+            weather_url = f"https://weather-broker-cdn.api.bbci.co.uk/en/forecast/aggregated/{location_id}"
+            weather_response = await client.get(weather_url)
+            weather_response.raise_for_status()
+            weather_data = weather_response.json()
+
+            # Step 3: Extract the forecast data
+            forecasts = weather_data.get("forecasts", [{}])[0].get("forecasts", [])
+
+            # Create a dictionary mapping dates to weather descriptions
+            weather_forecast = {}
+            for forecast in forecasts:
+                local_date = forecast.get("localDate")
+                description = forecast.get("enhancedWeatherDescription")
+                if local_date and description:
+                    weather_forecast[local_date] = description
+
+            # Format as JSON
+            forecast_json = json.dumps(weather_forecast, indent=2)
+
+            return f"""
+# Weather Forecast for {city}
+
+## Location Details
+- City: {city}
+- Location ID: {location_id}
+- Source: BBC Weather API
+
+## Forecast
+```json
+{forecast_json}
+```
+
+## Summary
+Retrieved weather forecast for {len(weather_forecast)} days.
+"""
+    except Exception as e:
+        return f"Error retrieving weather forecast: {str(e)}"

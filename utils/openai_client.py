@@ -515,6 +515,82 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "count_cricket_ducks",
+                "description": "Count the number of ducks in ESPN Cricinfo ODI batting stats for a specific page",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "page_number": {
+                            "type": "integer",
+                            "description": "Page number to analyze",
+                        },
+                    },
+                    "required": ["page_number"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_imdb_movies",
+                "description": "Get movie information from IMDb with ratings in a specific range",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "min_rating": {
+                            "type": "number",
+                            "description": "Minimum rating to filter by",
+                        },
+                        "max_rating": {
+                            "type": "number",
+                            "description": "Maximum rating to filter by",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of movies to return",
+                        },
+                    },
+                    "required": ["min_rating", "max_rating"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_country_outline",
+                "description": "Generate a Markdown outline from Wikipedia headings for a country",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "country": {
+                            "type": "string",
+                            "description": "Name of the country",
+                        },
+                    },
+                    "required": ["country"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather_forecast",
+                "description": "Get weather forecast for a city using BBC Weather API",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "city": {
+                            "type": "string",
+                            "description": "Name of the city",
+                        },
+                    },
+                    "required": ["city"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -700,7 +776,27 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                         prompt=function_args.get("prompt"),
                         structure_type=function_args.get("structure_type"),
                     )
+                elif function_name == "count_cricket_ducks":
+                    answer = await count_cricket_ducks(
+                        page_number=function_args.get("page_number", 3),
+                    )
 
+                elif function_name == "get_imdb_movies":
+                    answer = await get_imdb_movies(
+                        min_rating=function_args.get("min_rating", 7.0),
+                        max_rating=function_args.get("max_rating", 8.0),
+                        limit=function_args.get("limit", 25),
+                    )
+
+                elif function_name == "generate_country_outline":
+                    answer = await generate_country_outline(
+                        country=function_args.get("country"),
+                    )
+
+                elif function_name == "get_weather_forecast":
+                    answer = await get_weather_forecast(
+                        city=function_args.get("city"),
+                    )
                 # Break after the first function call is executed
                 break
 
