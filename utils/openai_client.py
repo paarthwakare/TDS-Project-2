@@ -686,6 +686,63 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_delhi_bounding_box",
+                "description": "Get the minimum latitude of Delhi, India using the Nominatim API",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "find_duckdb_hn_post",
+                "description": "Find the latest Hacker News post mentioning DuckDB with at least 71 points",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "find_newest_seattle_github_user",
+                "description": "Find the newest GitHub user in Seattle with over 130 followers",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": [],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_github_action_workflow",
+                "description": "Create a GitHub Action workflow that runs daily and adds a commit",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                            "type": "string",
+                            "description": "Email to include in the step name",
+                        },
+                        "repository_url": {
+                            "type": "string",
+                            "description": "Optional repository URL",
+                        },
+                    },
+                    "required": ["email"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -915,6 +972,20 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 elif function_name == "parse_function_call":
                     answer = await parse_function_call(
                         query=function_args.get("query", ""),
+                    )
+                elif function_name == "get_delhi_bounding_box":
+                    answer = await get_delhi_bounding_box()
+
+                elif function_name == "find_duckdb_hn_post":
+                    answer = await find_duckdb_hn_post()
+
+                elif function_name == "find_newest_seattle_github_user":
+                    answer = await find_newest_seattle_github_user()
+
+                elif function_name == "create_github_action_workflow":
+                    answer = await create_github_action_workflow(
+                        email=function_args.get("email"),
+                        repository_url=function_args.get("repository_url"),
                     )
                 # Break after the first function call is executed
                 break

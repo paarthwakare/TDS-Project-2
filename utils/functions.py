@@ -1984,3 +1984,354 @@ GET http://127.0.0.1:8000/execute?q={query.replace(" ", "%20")}
 """
     except Exception as e:
         return f"Error parsing function call: {str(e)}"
+
+
+async def get_delhi_bounding_box() -> str:
+    """
+    Get the minimum latitude of Delhi, India using the Nominatim API
+
+    Returns:
+        Information about Delhi's bounding box
+    """
+    try:
+        import httpx
+        import json
+
+        # Nominatim API endpoint
+        url = "https://nominatim.openstreetmap.org/search"
+
+        # Parameters for the request
+        params = {
+            "city": "Delhi",
+            "country": "India",
+            "format": "json",
+            "limit": 10,  # Get multiple results to ensure we find the right one
+        }
+
+        # Headers to identify our application (required by Nominatim usage policy)
+        headers = {"User-Agent": "LocationDataRetriever/1.0"}
+
+        async with httpx.AsyncClient() as client:
+            # Add a small delay to respect rate limits
+            await asyncio.sleep(1)
+
+            # Make the request
+            response = await client.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            results = response.json()
+
+            if not results:
+                return "No results found for Delhi, India"
+
+            # Find the correct Delhi (capital city)
+            delhi = None
+            for result in results:
+                # Look for the main Delhi city entry
+                if result.get("type") == "administrative" and "Delhi" in result.get(
+                    "display_name"
+                ):
+                    delhi = result
+                    break
+
+            if not delhi:
+                delhi = results[
+                    0
+                ]  # Use the first result if we can't find a better match
+
+            # Extract the bounding box
+            bounding_box = delhi.get("boundingbox")
+
+            if not bounding_box or len(bounding_box) < 4:
+                return "Bounding box information not available"
+
+            # The bounding box format is [min_lat, max_lat, min_lon, max_lon]
+            min_latitude = float(bounding_box[0])
+
+            # Create a detailed response
+            return f"""
+# Delhi Bounding Box Analysis
+
+## City Information
+- City: Delhi
+- Country: India
+- OSM Type: {delhi.get("osm_type", "N/A")}
+- OSM ID: {delhi.get("osm_id", "N/A")}
+- Display Name: {delhi.get("display_name", "N/A")}
+
+## Bounding Box
+- Minimum Latitude: **{min_latitude}**
+- Maximum Latitude: {bounding_box[1]}
+- Minimum Longitude: {bounding_box[2]}
+- Maximum Longitude: {bounding_box[3]}
+
+## API Details
+- API: Nominatim OpenStreetMap
+- Endpoint: {url}
+- Parameters: {json.dumps(params)}
+
+## Usage Notes
+This data can be used for:
+- Optimizing routing within Delhi
+- Improving fleet allocation
+- Enhancing market analysis
+- Scaling operations to new cities
+"""
+    except Exception as e:
+        return f"Error retrieving Delhi bounding box: {str(e)}"
+
+
+async def find_duckdb_hn_post() -> str:
+    """
+    Find the latest Hacker News post mentioning DuckDB with at least 71 points
+
+    Returns:
+        Information about the post and its link
+    """
+    try:
+        import httpx
+        import xml.etree.ElementTree as ET
+
+        # HNRSS API endpoint for searching posts with minimum points
+        url = "https://hnrss.org/newest"
+
+        # Parameters for the request
+        params = {"q": "DuckDB", "points": "71"}  # Search term  # Minimum points
+
+        async with httpx.AsyncClient() as client:
+            # Make the request
+            response = await client.get(url, params=params)
+            response.raise_for_status()
+            rss_content = response.text
+
+            # Parse the XML content
+            root = ET.fromstring(rss_content)
+
+            # Find all items in the RSS feed
+            items = root.findall(".//item")
+
+            if not items:
+                return "No Hacker News posts found mentioning DuckDB with at least 71 points"
+
+            # Get the first (most recent) item
+            latest_item = items[0]
+
+            # Extract information from the item
+            title = (
+                latest_item.find("title").text
+                if latest_item.find("title") is not None
+                else "No title"
+            )
+            link = (
+                latest_item.find("link").text
+                if latest_item.find("link") is not None
+                else "No link"
+            )
+            pub_date = (
+                latest_item.find("pubDate").text
+                if latest_item.find("pubDate") is not None
+                else "No date"
+            )
+
+            # Create a detailed response
+            return f"""
+# Latest Hacker News Post About DuckDB
+
+## Post Information
+- Title: {title}
+- Publication Date: {pub_date}
+- Link: **{link}**
+
+## Search Criteria
+- Keyword: DuckDB
+- Minimum Points: 71
+
+## API Details
+- API: Hacker News RSS
+- Endpoint: {url}
+- Parameters: {params}
+
+## Usage Notes
+This data can be used for:
+- Tracking industry trends
+- Monitoring technology discussions
+- Gathering competitive intelligence
+"""
+    except Exception as e:
+        return f"Error finding DuckDB Hacker News post: {str(e)}"
+
+
+async def find_newest_seattle_github_user() -> str:
+    """
+    Find the newest GitHub user in Seattle with over 130 followers
+
+    Returns:
+        Information about the user and when their profile was created
+    """
+    try:
+        import httpx
+        import json
+        from datetime import datetime
+
+        # GitHub API endpoint for searching users
+        url = "https://api.github.com/search/users"
+
+        # Parameters for the request
+        params = {
+            "q": "location:Seattle followers:>130",
+            "sort": "joined",
+            "order": "desc",
+            "per_page": 10,  # Get multiple results to ensure we find valid users
+        }
+
+        # Headers for GitHub API
+        headers = {
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "GitHubUserFinder/1.0",
+        }
+
+        async with httpx.AsyncClient() as client:
+            # Make the request
+            response = await client.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            search_results = response.json()
+
+            if not search_results.get("items"):
+                return "No GitHub users found in Seattle with over 130 followers"
+
+            # Get the newest user
+            newest_user = None
+            cutoff_date = datetime.fromisoformat(
+                "2025-03-19T13:51:09Z".replace("Z", "+00:00")
+            )
+
+            for user in search_results["items"]:
+                # Get detailed user information
+                user_url = user["url"]
+                user_response = await client.get(user_url, headers=headers)
+                user_response.raise_for_status()
+                user_details = user_response.json()
+
+                # Check if the user has a created_at date
+                if "created_at" in user_details:
+                    created_at = datetime.fromisoformat(
+                        user_details["created_at"].replace("Z", "+00:00")
+                    )
+
+                    # Ignore users who joined after the cutoff date
+                    if created_at < cutoff_date:
+                        newest_user = user_details
+                        break
+
+            if not newest_user:
+                return "No valid GitHub users found in Seattle with over 130 followers"
+
+            # Extract the created_at date
+            created_at = newest_user.get("created_at")
+
+            # Create a detailed response
+            return f"""
+# Newest GitHub User in Seattle with 130+ Followers
+
+## User Information
+- Username: {newest_user.get("login")}
+- Name: {newest_user.get("name") or "N/A"}
+- Profile URL: {newest_user.get("html_url")}
+- Followers: {newest_user.get("followers")}
+- Location: {newest_user.get("location")}
+- Created At: **{created_at}**
+
+## Search Criteria
+- Location: Seattle
+- Minimum Followers: 130
+- Sort: Joined (descending)
+
+## API Details
+- API: GitHub Search API
+- Endpoint: {url}
+- Parameters: {json.dumps(params)}
+
+## Usage Notes
+This data can be used for:
+- Targeted recruitment
+- Competitive intelligence
+- Efficiency in talent acquisition
+- Data-driven decisions in recruitment
+"""
+    except Exception as e:
+        return f"Error finding newest Seattle GitHub user: {str(e)}"
+
+
+async def create_github_action_workflow(email: str, repository_url: str = None) -> str:
+    """
+    Create a GitHub Action workflow that runs daily and adds a commit
+
+    Args:
+        email: Email to include in the step name
+        repository_url: Optional repository URL
+
+    Returns:
+        GitHub Action workflow YAML
+    """
+    try:
+        # Generate GitHub Action workflow
+        workflow = f"""name: Daily Commit
+
+# Schedule to run once per day at 14:30 UTC
+on:
+  schedule:
+    - cron: '30 14 * * *'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  daily-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        
+      - name: {email}
+        run: |
+          # Create a new file with timestamp
+          echo "Daily update on $(date)" > daily-update.txt
+          
+          # Configure Git
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          
+          # Commit and push changes
+          git add daily-update.txt
+          git commit -m "Daily automated update"
+          git push
+"""
+
+        # Instructions for setting up the workflow
+        instructions = f"""
+# GitHub Action Workflow Setup
+
+## Workflow File
+Save this file as `.github/workflows/daily-commit.yml` in your repository:
+
+```yaml
+{workflow}
+```
+
+## How It Works
+1. This workflow runs automatically at 14:30 UTC every day
+2. It creates a file with the current timestamp
+3. It commits and pushes the changes to your repository
+4. The step name includes your email: {email}
+
+## Manual Trigger
+You can also trigger this workflow manually from the Actions tab in your repository.
+
+## Verification Steps
+1. After setting up, go to the Actions tab in your repository
+2. You should see the "Daily Commit" workflow
+3. Check that it creates a commit during or within 5 minutes of the workflow run
+
+## Repository URL
+{repository_url or "Please provide your repository URL"}
+"""
+        return instructions
+    except Exception as e:
+        return f"Error creating GitHub Action workflow: {str(e)}"
