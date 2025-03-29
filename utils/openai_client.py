@@ -591,6 +591,62 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_vision_api_request",
+                "description": "Generate a JSON body for OpenAI's vision API to extract text from an image",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "image_url": {
+                            "type": "string",
+                            "description": "Base64 URL of the image",
+                        },
+                    },
+                    "required": ["image_url"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_embeddings_request",
+                "description": "Generate a JSON body for OpenAI's embeddings API",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "texts": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of texts to generate embeddings for",
+                        },
+                    },
+                    "required": ["texts"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "find_most_similar_phrases",
+                "description": "Find the most similar pair of phrases based on cosine similarity of their embeddings",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "embeddings_dict": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "array",
+                                "items": {"type": "number"},
+                            },
+                            "description": "Dictionary mapping phrases to their embeddings",
+                        },
+                    },
+                    "required": ["embeddings_dict"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -796,6 +852,20 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 elif function_name == "get_weather_forecast":
                     answer = await get_weather_forecast(
                         city=function_args.get("city"),
+                    )
+                elif function_name == "generate_vision_api_request":
+                    answer = await generate_vision_api_request(
+                        image_url=function_args.get("image_url"),
+                    )
+
+                elif function_name == "generate_embeddings_request":
+                    answer = await generate_embeddings_request(
+                        texts=function_args.get("texts", []),
+                    )
+
+                elif function_name == "find_most_similar_phrases":
+                    answer = await find_most_similar_phrases(
+                        embeddings_dict=function_args.get("embeddings_dict", {}),
                     )
                 # Break after the first function call is executed
                 break

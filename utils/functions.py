@@ -1462,3 +1462,192 @@ Retrieved weather forecast for {len(weather_forecast)} days.
 """
     except Exception as e:
         return f"Error retrieving weather forecast: {str(e)}"
+
+
+async def generate_vision_api_request(image_url: str) -> str:
+    """
+    Generate a JSON body for OpenAI's vision API to extract text from an image
+
+    Args:
+        image_url: Base64 URL of the image
+
+    Returns:
+        JSON body for the API request
+    """
+    try:
+        import json
+
+        # Create the request body
+        request_body = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Extract text from this image."},
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ],
+                }
+            ],
+            "max_tokens": 300,
+        }
+
+        # Format the JSON nicely
+        formatted_json = json.dumps(request_body, indent=2)
+
+        return f"""
+# Vision API Request Body
+
+The following JSON body can be sent to the OpenAI API to extract text from an image:
+
+```json
+{formatted_json}
+```
+
+## Request Details
+- Model: gpt-4o-mini
+- API Endpoint: https://api.openai.com/v1/chat/completions
+- Request Type: POST
+- Purpose: Extract text from an image using OpenAI's vision capabilities
+"""
+    except Exception as e:
+        return f"Error generating vision API request: {str(e)}"
+
+
+async def generate_embeddings_request(texts: List[str]) -> str:
+    """
+    Generate a JSON body for OpenAI's embeddings API
+
+    Args:
+        texts: List of texts to generate embeddings for
+
+    Returns:
+        JSON body for the API request
+    """
+    try:
+        import json
+
+        # Create the request body
+        request_body = {
+            "model": "text-embedding-3-small",
+            "input": texts,
+            "encoding_format": "float",
+        }
+
+        # Format the JSON nicely
+        formatted_json = json.dumps(request_body, indent=2)
+
+        return f"""
+# Embeddings API Request Body
+
+The following JSON body can be sent to the OpenAI API to generate embeddings:
+
+```json
+{formatted_json}
+```
+
+## Request Details
+- Model: text-embedding-3-small
+- API Endpoint: https://api.openai.com/v1/embeddings
+- Request Type: POST
+- Purpose: Generate embeddings for text analysis
+"""
+    except Exception as e:
+        return f"Error generating embeddings request: {str(e)}"
+
+
+async def find_most_similar_phrases(embeddings_dict: Dict[str, List[float]]) -> str:
+    """
+    Find the most similar pair of phrases based on cosine similarity of their embeddings
+
+    Args:
+        embeddings_dict: Dictionary mapping phrases to their embeddings
+
+    Returns:
+        The most similar pair of phrases
+    """
+    try:
+        import numpy as np
+        from itertools import combinations
+
+        # Function to calculate cosine similarity
+        def cosine_similarity(vec1, vec2):
+            dot_product = np.dot(vec1, vec2)
+            norm_vec1 = np.linalg.norm(vec1)
+            norm_vec2 = np.linalg.norm(vec2)
+            return dot_product / (norm_vec1 * norm_vec2)
+
+        # Convert dictionary to lists for easier processing
+        phrases = list(embeddings_dict.keys())
+        embeddings = list(embeddings_dict.values())
+
+        # Calculate similarity for each pair
+        max_similarity = -1
+        most_similar_pair = None
+
+        for i, j in combinations(range(len(phrases)), 2):
+            similarity = cosine_similarity(embeddings[i], embeddings[j])
+            if similarity > max_similarity:
+                max_similarity = similarity
+                most_similar_pair = (phrases[i], phrases[j])
+
+        # Generate Python code for the solution
+        solution_code = """
+def most_similar(embeddings):
+    \"\"\"
+    Find the most similar pair of phrases based on cosine similarity of their embeddings.
+    
+    Args:
+        embeddings: Dictionary mapping phrases to their embeddings
+        
+    Returns:
+        Tuple of the two most similar phrases
+    \"\"\"
+    import numpy as np
+    from itertools import combinations
+
+    # Function to calculate cosine similarity
+    def cosine_similarity(vec1, vec2):
+        dot_product = np.dot(vec1, vec2)
+        norm_vec1 = np.linalg.norm(vec1)
+        norm_vec2 = np.linalg.norm(vec2)
+        return dot_product / (norm_vec1 * norm_vec2)
+
+    # Convert dictionary to lists for easier processing
+    phrases = list(embeddings.keys())
+    embeddings_list = list(embeddings.values())
+
+    # Calculate similarity for each pair
+    max_similarity = -1
+    most_similar_pair = None
+
+    for i, j in combinations(range(len(phrases)), 2):
+        similarity = cosine_similarity(embeddings_list[i], embeddings_list[j])
+        if similarity > max_similarity:
+            max_similarity = similarity
+            most_similar_pair = (phrases[i], phrases[j])
+
+    return most_similar_pair
+"""
+
+        return f"""
+# Most Similar Phrases Analysis
+
+## Result
+The most similar pair of phrases is: {most_similar_pair[0]} and {most_similar_pair[1]}
+Similarity score: {max_similarity:.4f}
+
+## Python Solution
+```python
+{solution_code}
+```
+
+## Explanation
+This function:
+
+1. Calculates the cosine similarity between each pair of embeddings
+2. Identifies the pair with the highest similarity score
+3. Returns the two phrases as a tuple
+"""
+    except Exception as e:
+        return f"Error finding most similar phrases: {str(e)}"
