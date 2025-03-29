@@ -2335,3 +2335,236 @@ You can also trigger this workflow manually from the Actions tab in your reposit
         return instructions
     except Exception as e:
         return f"Error creating GitHub Action workflow: {str(e)}"
+
+
+async def extract_tables_from_pdf(file_path: str) -> str:
+    """
+    Extract tables from a PDF file and calculate the total Biology marks of students
+    who scored 17 or more marks in Physics in groups 43-66 (inclusive)
+
+    Args:
+        file_path: Path to the PDF file
+
+    Returns:
+        Total Biology marks of filtered students
+    """
+    try:
+        import tabula
+        import pandas as pd
+        import os
+        import tempfile
+
+        # Create a temporary directory to store extracted files
+        temp_dir = tempfile.mkdtemp()
+
+        try:
+            # Extract tables from the PDF
+            tables = tabula.read_pdf(file_path, pages="all", multiple_tables=True)
+
+            if not tables:
+                return "No tables found in the PDF."
+
+            # Combine all tables into a single DataFrame
+            combined_df = pd.concat(tables, ignore_index=True)
+
+            # Clean column names (remove any whitespace)
+            combined_df.columns = combined_df.columns.str.strip()
+
+            # Ensure the required columns exist
+            required_columns = ["Group", "Physics", "Biology"]
+            missing_columns = [
+                col for col in required_columns if col not in combined_df.columns
+            ]
+
+            if missing_columns:
+                return f"Missing required columns: {', '.join(missing_columns)}"
+
+            # Convert marks columns to numeric, coercing errors to NaN
+            for col in ["Physics", "Biology"]:
+                combined_df[col] = pd.to_numeric(combined_df[col], errors="coerce")
+
+            # Convert Group column to numeric if it's not already
+            combined_df["Group"] = pd.to_numeric(combined_df["Group"], errors="coerce")
+
+            # Filter students based on criteria:
+            # 1. Physics marks >= 17
+            # 2. Group between 43 and 66 (inclusive)
+            filtered_df = combined_df[
+                (combined_df["Physics"] >= 17)
+                & (combined_df["Group"] >= 43)
+                & (combined_df["Group"] <= 66)
+            ]
+
+            # Calculate the total Biology marks
+            total_biology_marks = filtered_df["Biology"].sum()
+
+            # Create a detailed response
+            return f"""
+# PDF Table Analysis: Student Marks
+
+## Analysis Criteria
+- Students with Physics marks ≥ 17
+- Students in groups 43-66 (inclusive)
+
+## Results
+- Total number of students meeting criteria: {len(filtered_df)}
+- **Total Biology marks: {total_biology_marks}**
+
+## Data Processing Steps
+1. Extracted tables from PDF using tabula
+2. Combined all tables into a single dataset
+3. Converted marks to numeric values
+4. Filtered students based on Physics marks and Group
+5. Calculated sum of Biology marks for filtered students
+
+## Sample of Filtered Data
+{filtered_df.head(5).to_string(index=False) if not filtered_df.empty else "No students matched the criteria"}
+"""
+        finally:
+            # Clean up the temporary directory
+            import shutil
+
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    except Exception as e:
+        return f"Error extracting tables from PDF: {str(e)}"
+
+
+async def convert_pdf_to_markdown(file_path: str) -> str:
+    """
+    Convert a PDF file to Markdown and format it with Prettier
+
+    Args:
+        file_path: Path to the PDF file
+
+    Returns:
+        Formatted Markdown content
+    """
+    try:
+        import PyPDF2
+        import re
+        import subprocess
+        import os
+        import tempfile
+
+        # Create a temporary directory
+        temp_dir = tempfile.mkdtemp()
+        raw_md_path = os.path.join(temp_dir, "raw_content.md")
+        formatted_md_path = os.path.join(temp_dir, "formatted_content.md")
+
+        try:
+            # Extract text from PDF
+            with open(file_path, "rb") as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                text = ""
+
+                for page_num in range(len(pdf_reader.pages)):
+                    page = pdf_reader.pages[page_num]
+                    text += page.extract_text()
+
+            # Basic conversion to Markdown
+            # Replace multiple newlines with double newlines for paragraphs
+            markdown_text = re.sub(r"\n{3,}", "\n\n", text)
+
+            # Handle headings (assuming headings are in larger font or bold)
+            # This is a simplified approach - real implementation would need more sophisticated detection
+            lines = markdown_text.split("\n")
+            processed_lines = []
+
+            for line in lines:
+                # Strip line
+                stripped_line = line.strip()
+
+                # Skip empty lines
+                if not stripped_line:
+                    processed_lines.append("")
+                    continue
+
+                # Detect potential headings (simplified approach)
+                if len(stripped_line) < 100 and stripped_line.endswith(":"):
+                    # Assume this is a heading
+                    processed_lines.append(f"## {stripped_line[:-1]}")
+                elif len(stripped_line) < 50 and stripped_line.isupper():
+                    # Assume this is a main heading
+                    processed_lines.append(f"# {stripped_line}")
+                else:
+                    # Regular paragraph
+                    processed_lines.append(stripped_line)
+
+            # Join processed lines
+            markdown_text = "\n\n".join(processed_lines)
+
+            # Handle bullet points
+            markdown_text = re.sub(r"•\s*", "* ", markdown_text)
+
+            # Handle numbered lists
+            markdown_text = re.sub(r"(\d+)\.\s+", r"\1. ", markdown_text)
+
+            # Write raw markdown to file
+            with open(raw_md_path, "w", encoding="utf-8") as md_file:
+                md_file.write(markdown_text)
+
+            # Format with Prettier
+            try:
+                # Install Prettier if not already installed
+                subprocess.run(
+                    ["npm", "install", "--no-save", "prettier@3.4.2"],
+                    cwd=temp_dir,
+                    check=True,
+                    capture_output=True,
+                )
+
+                # Run Prettier on the markdown file
+                subprocess.run(
+                    ["npx", "prettier@3.4.2", "--write", raw_md_path],
+                    cwd=temp_dir,
+                    check=True,
+                    capture_output=True,
+                )
+
+                # Read the formatted markdown
+                with open(raw_md_path, "r", encoding="utf-8") as formatted_file:
+                    formatted_markdown = formatted_file.read()
+
+                return f"""
+# PDF to Markdown Conversion
+
+## Formatted Markdown Content
+
+```markdown
+{formatted_markdown}
+```
+
+## Conversion Process
+1. Extracted text from PDF using PyPDF2
+2. Converted text to basic Markdown format
+3. Applied formatting rules for headings, lists, and paragraphs
+4. Formatted the Markdown with Prettier v3.4.2
+
+## Usage Notes
+This formatted Markdown can be used in:
+
+- Documentation systems
+- Content management systems
+- Educational resources
+- Knowledge bases
+"""
+            except subprocess.CalledProcessError as e:
+                # If Prettier fails, return the unformatted markdown
+                return f"""
+# PDF to Markdown Conversion (Prettier formatting failed)
+
+## Markdown Content (Unformatted)
+{markdown_text}
+
+## Error Details
+Failed to format with Prettier: {str(e)}
+"""
+        finally:
+            # Clean up the temporary directory
+            import shutil
+
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+    except Exception as e:
+        return f"Error converting PDF to Markdown: {str(e)}"

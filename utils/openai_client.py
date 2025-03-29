@@ -743,6 +743,40 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "extract_tables_from_pdf",
+                "description": "Extract tables from a PDF file and calculate the total Biology marks of students who scored 17 or more marks in Physics in groups 43-66 (inclusive)",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the PDF file",
+                        },
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "convert_pdf_to_markdown",
+                "description": "Convert a PDF file to Markdown and format it with Prettier",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the PDF file",
+                        },
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -986,6 +1020,15 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                     answer = await create_github_action_workflow(
                         email=function_args.get("email"),
                         repository_url=function_args.get("repository_url"),
+                    )
+                elif function_name == "extract_tables_from_pdf":
+                    answer = await extract_tables_from_pdf(
+                        file_path=function_args.get("file_path"),
+                    )
+
+                elif function_name == "convert_pdf_to_markdown":
+                    answer = await convert_pdf_to_markdown(
+                        file_path=function_args.get("file_path"),
                     )
                 # Break after the first function call is executed
                 break
