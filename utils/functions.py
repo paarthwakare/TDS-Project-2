@@ -1996,6 +1996,7 @@ async def get_delhi_bounding_box() -> str:
     try:
         import httpx
         import json
+        import asyncio  # Make sure this import is present
 
         # Nominatim API endpoint
         url = "https://nominatim.openstreetmap.org/search"
@@ -2026,56 +2027,23 @@ async def get_delhi_bounding_box() -> str:
             # Find the correct Delhi (capital city)
             delhi = None
             for result in results:
-                # Look for the main Delhi city entry
-                if result.get("type") == "administrative" and "Delhi" in result.get(
-                    "display_name"
-                ):
+                if "New Delhi" in result.get("display_name", ""):
                     delhi = result
                     break
 
-            if not delhi:
-                delhi = results[
-                    0
-                ]  # Use the first result if we can't find a better match
+            # If we didn't find New Delhi specifically, use the first result
+            if not delhi and results:
+                delhi = results[0]
 
-            # Extract the bounding box
-            bounding_box = delhi.get("boundingbox")
+            if delhi and "boundingbox" in delhi:
+                # Extract the minimum latitude from the bounding box
+                min_lat = delhi["boundingbox"][0]
 
-            if not bounding_box or len(bounding_box) < 4:
-                return "Bounding box information not available"
+                # Return just the minimum latitude value
+                return min_lat
+            else:
+                return "Bounding box information not available for Delhi"
 
-            # The bounding box format is [min_lat, max_lat, min_lon, max_lon]
-            min_latitude = float(bounding_box[0])
-
-            # Create a detailed response
-            return f"""
-# Delhi Bounding Box Analysis
-
-## City Information
-- City: Delhi
-- Country: India
-- OSM Type: {delhi.get("osm_type", "N/A")}
-- OSM ID: {delhi.get("osm_id", "N/A")}
-- Display Name: {delhi.get("display_name", "N/A")}
-
-## Bounding Box
-- Minimum Latitude: **{min_latitude}**
-- Maximum Latitude: {bounding_box[1]}
-- Minimum Longitude: {bounding_box[2]}
-- Maximum Longitude: {bounding_box[3]}
-
-## API Details
-- API: Nominatim OpenStreetMap
-- Endpoint: {url}
-- Parameters: {json.dumps(params)}
-
-## Usage Notes
-This data can be used for:
-- Optimizing routing within Delhi
-- Improving fleet allocation
-- Enhancing market analysis
-- Scaling operations to new cities
-"""
     except Exception as e:
         return f"Error retrieving Delhi bounding box: {str(e)}"
 
