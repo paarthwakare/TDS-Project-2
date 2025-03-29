@@ -1,8 +1,15 @@
 import os
 import httpx
 import json
+import re
+import zipfile
+import pandas as pd
+import tempfile
+import shutil
+import subprocess
 from typing import Optional, Dict, Any, List
 from dotenv import load_dotenv
+from app.utils.functions import *
 
 load_dotenv()
 
@@ -24,8 +31,25 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
         {
             "type": "function",
             "function": {
+                "name": "execute_command",
+                "description": "Execute a shell command and return its output",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The command to execute",
+                        }
+                    },
+                    "required": ["command"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "extract_zip_and_read_csv",
-                "description": "Extract data from a zip file containing CSV and read specific values",
+                "description": "Extract a zip file and read a value from a CSV file inside it",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -45,26 +69,21 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
         {
             "type": "function",
             "function": {
-                "name": "calculate_statistics",
-                "description": "Calculate statistics from a CSV file",
+                "name": "extract_zip_and_process_files",
+                "description": "Extract a zip file and process multiple files",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "file_path": {
                             "type": "string",
-                            "description": "Path to the CSV file",
+                            "description": "Path to the zip file",
                         },
                         "operation": {
                             "type": "string",
-                            "enum": ["sum", "average", "median", "max", "min"],
-                            "description": "Statistical operation to perform",
-                        },
-                        "column_name": {
-                            "type": "string",
-                            "description": "Column name to perform operation on",
+                            "description": "Operation to perform on files",
                         },
                     },
-                    "required": ["file_path", "operation", "column_name"],
+                    "required": ["file_path", "operation"],
                 },
             },
         },
@@ -98,13 +117,352 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "sort_json_array",
+                "description": "Sort a JSON array based on specified criteria",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "json_array": {
+                            "type": "string",
+                            "description": "JSON array to sort",
+                        },
+                        "sort_keys": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of keys to sort by",
+                        },
+                    },
+                    "required": ["json_array", "sort_keys"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "count_days_of_week",
+                "description": "Count occurrences of a specific day of the week between two dates",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "start_date": {
+                            "type": "string",
+                            "description": "Start date in ISO format (YYYY-MM-DD)",
+                        },
+                        "end_date": {
+                            "type": "string",
+                            "description": "End date in ISO format (YYYY-MM-DD)",
+                        },
+                        "day_of_week": {
+                            "type": "string",
+                            "enum": [
+                                "Monday",
+                                "Tuesday",
+                                "Wednesday",
+                                "Thursday",
+                                "Friday",
+                                "Saturday",
+                                "Sunday",
+                            ],
+                            "description": "Day of the week to count",
+                        },
+                    },
+                    "required": ["start_date", "end_date", "day_of_week"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "process_encoded_files",
+                "description": "Process files with different encodings",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the zip file containing encoded files",
+                        },
+                        "target_symbols": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of symbols to search for",
+                        },
+                    },
+                    "required": ["file_path", "target_symbols"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "calculate_spreadsheet_formula",
+                "description": "Calculate the result of a spreadsheet formula",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "formula": {
+                            "type": "string",
+                            "description": "The formula to calculate",
+                        },
+                        "type": {
+                            "type": "string",
+                            "enum": ["google_sheets", "excel"],
+                            "description": "Type of spreadsheet",
+                        },
+                    },
+                    "required": ["formula", "type"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "compare_files",
+                "description": "Compare two files and analyze differences",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the zip file containing files to compare",
+                        }
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "run_sql_query",
+                "description": "Calculate a SQL query result",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "SQL query to run"}
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_markdown_documentation",
+                "description": "Generate markdown documentation with specific elements",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {
+                            "type": "string",
+                            "description": "Topic for the markdown documentation",
+                        },
+                        "elements": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of markdown elements to include",
+                        },
+                    },
+                    "required": ["topic"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "compress_image",
+                "description": "Compress an image to a target size while maintaining quality",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the image file",
+                        },
+                        "target_size": {
+                            "type": "integer",
+                            "description": "Target size in bytes",
+                        },
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_github_pages",
+                "description": "Generate HTML content for GitHub Pages with email protection",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                            "type": "string",
+                            "description": "Email address to include in the page",
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Optional content for the page",
+                        },
+                    },
+                    "required": ["email"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "run_colab_code",
+                "description": "Simulate running code on Google Colab",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description": "Code to run",
+                        },
+                        "email": {
+                            "type": "string",
+                            "description": "Email address for authentication",
+                        },
+                    },
+                    "required": ["code", "email"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "analyze_image_brightness",
+                "description": "Analyze image brightness and count pixels above threshold",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the image file",
+                        },
+                        "threshold": {
+                            "type": "number",
+                            "description": "Brightness threshold",
+                        },
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "deploy_vercel_app",
+                "description": "Generate code for a Vercel app deployment",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "data_file": {
+                            "type": "string",
+                            "description": "Path to the data file",
+                        },
+                        "app_name": {
+                            "type": "string",
+                            "description": "Optional name for the app",
+                        },
+                    },
+                    "required": ["data_file"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_github_action",
+                "description": "Generate GitHub Action workflow with email in step name",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                            "type": "string",
+                            "description": "Email to include in step name",
+                        },
+                        "repository": {
+                            "type": "string",
+                            "description": "Optional repository name",
+                        },
+                    },
+                    "required": ["email"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_docker_image",
+                "description": "Generate Dockerfile and instructions for Docker Hub deployment",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tag": {
+                            "type": "string",
+                            "description": "Tag for the Docker image",
+                        },
+                        "dockerfile_content": {
+                            "type": "string",
+                            "description": "Optional Dockerfile content",
+                        },
+                    },
+                    "required": ["tag"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "filter_students_by_class",
+                "description": "Filter students from a CSV file by class",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the CSV file",
+                        },
+                        "classes": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of classes to filter by",
+                        },
+                    },
+                    "required": ["file_path", "classes"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "setup_llamafile_with_ngrok",
+                "description": "Generate instructions for setting up Llamafile with ngrok",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "model_name": {
+                            "type": "string",
+                            "description": "Name of the Llamafile model",
+                        },
+                    },
+                    "required": [],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
     messages = [
         {
             "role": "system",
-            "content": "You are a helpful assistant designed to solve data science assignment problems. You should use the provided functions when appropriate to solve the problem.",
+            "content": "You are an assistant designed to solve data science assignment problems. You should use the provided functions when appropriate to solve the problem.",
         },
         {"role": "user", "content": question},
     ]
@@ -139,33 +497,140 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
             raise Exception(f"Error from OpenAI API: {response.text}")
 
         result = response.json()
+        answer = None
 
         # Process the response
         message = result["choices"][0]["message"]
 
         # Check if there's a function call
         if "tool_calls" in message:
-            tool_calls = message["tool_calls"]
-
-            # For this example, we'll just return the result as a string
-            # In a real implementation, you would execute the function
-            # and return the actual result
-
-            # Placeholder for function execution results
-            function_results = []
-
-            for tool_call in tool_calls:
+            for tool_call in message["tool_calls"]:
                 function_name = tool_call["function"]["name"]
                 function_args = json.loads(tool_call["function"]["arguments"])
 
-                # Here you would actually execute the function
-                # For now, we'll just return a placeholder
-                function_results.append(
-                    f"Function {function_name} would be called with args: {function_args}"
-                )
+                # Execute the appropriate function
+                if function_name == "execute_command":
+                    answer = await execute_command(function_args.get("command"))
 
-            # Return the function results
-            return "\n".join(function_results)
+                elif function_name == "extract_zip_and_read_csv":
+                    answer = await extract_zip_and_read_csv(
+                        file_path=function_args.get("file_path", file_path),
+                        column_name=function_args.get("column_name"),
+                    )
 
-        # Return the content if no function call
-        return message.get("content", "No response generated")
+                elif function_name == "extract_zip_and_process_files":
+                    answer = await extract_zip_and_process_files(
+                        file_path=function_args.get("file_path", file_path),
+                        operation=function_args.get("operation"),
+                    )
+
+                elif function_name == "make_api_request":
+                    answer = await make_api_request(
+                        url=function_args.get("url"),
+                        method=function_args.get("method"),
+                        headers=function_args.get("headers"),
+                        data=function_args.get("data"),
+                    )
+
+                elif function_name == "sort_json_array":
+                    answer = sort_json_array(
+                        json_array=function_args.get("json_array"),
+                        sort_keys=function_args.get("sort_keys"),
+                    )
+
+                elif function_name == "count_days_of_week":
+                    answer = count_days_of_week(
+                        start_date=function_args.get("start_date"),
+                        end_date=function_args.get("end_date"),
+                        day_of_week=function_args.get("day_of_week"),
+                    )
+
+                elif function_name == "process_encoded_files":
+                    answer = await process_encoded_files(
+                        file_path=function_args.get("file_path", file_path),
+                        target_symbols=function_args.get("target_symbols"),
+                    )
+
+                elif function_name == "calculate_spreadsheet_formula":
+                    answer = calculate_spreadsheet_formula(
+                        formula=function_args.get("formula"),
+                        type=function_args.get("type"),
+                    )
+
+                elif function_name == "compare_files":
+                    answer = await compare_files(
+                        file_path=function_args.get("file_path", file_path)
+                    )
+
+                elif function_name == "run_sql_query":
+                    answer = run_sql_query(query=function_args.get("query"))
+
+                elif function_name == "generate_markdown_documentation":
+                    answer = generate_markdown_documentation(
+                        topic=function_args.get("topic"),
+                        elements=function_args.get("elements"),
+                    )
+
+                elif function_name == "compress_image":
+                    answer = await compress_image(
+                        file_path=function_args.get("file_path", file_path),
+                        target_size=function_args.get("target_size", 1500),
+                    )
+
+                elif function_name == "create_github_pages":
+                    answer = await create_github_pages(
+                        email=function_args.get("email"),
+                        content=function_args.get("content"),
+                    )
+
+                elif function_name == "run_colab_code":
+                    answer = await run_colab_code(
+                        code=function_args.get("code"),
+                        email=function_args.get("email"),
+                    )
+
+                elif function_name == "analyze_image_brightness":
+                    answer = await analyze_image_brightness(
+                        file_path=function_args.get("file_path", file_path),
+                        threshold=function_args.get("threshold", 0.937),
+                    )
+
+                elif function_name == "deploy_vercel_app":
+                    answer = await deploy_vercel_app(
+                        data_file=function_args.get("data_file", file_path),
+                        app_name=function_args.get("app_name"),
+                    )
+
+                elif function_name == "create_github_action":
+                    answer = await create_github_action(
+                        email=function_args.get("email"),
+                        repository=function_args.get("repository"),
+                    )
+
+                elif function_name == "create_docker_image":
+                    answer = await create_docker_image(
+                        tag=function_args.get("tag"),
+                        dockerfile_content=function_args.get("dockerfile_content"),
+                    )
+
+                elif function_name == "filter_students_by_class":
+                    answer = await filter_students_by_class(
+                        file_path=function_args.get("file_path", file_path),
+                        classes=function_args.get("classes", []),
+                    )
+
+                elif function_name == "setup_llamafile_with_ngrok":
+                    answer = await setup_llamafile_with_ngrok(
+                        model_name=function_args.get(
+                            "model_name", "Llama-3.2-1B-Instruct.Q6_K.llamafile"
+                        ),
+                    )
+
+                # Break after the first function call is executed
+                break
+
+        # If no function call was executed, return the content
+        if answer is None:
+            answer = message.get("content", "No answer could be generated.")
+
+        return answer
