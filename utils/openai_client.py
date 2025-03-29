@@ -647,6 +647,45 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "compute_document_similarity",
+                "description": "Compute similarity between a query and a list of documents using embeddings",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "docs": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of document texts",
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "Query string to compare against documents",
+                        },
+                    },
+                    "required": ["docs", "query"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "parse_function_call",
+                "description": "Parse a natural language query to determine which function to call and extract parameters",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural language query",
+                        },
+                    },
+                    "required": ["query"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -866,6 +905,16 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 elif function_name == "find_most_similar_phrases":
                     answer = await find_most_similar_phrases(
                         embeddings_dict=function_args.get("embeddings_dict", {}),
+                    )
+                elif function_name == "compute_document_similarity":
+                    answer = await compute_document_similarity(
+                        docs=function_args.get("docs", []),
+                        query=function_args.get("query", ""),
+                    )
+
+                elif function_name == "parse_function_call":
+                    answer = await parse_function_call(
+                        query=function_args.get("query", ""),
                     )
                 # Break after the first function call is executed
                 break
