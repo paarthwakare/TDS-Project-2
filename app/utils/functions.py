@@ -3443,3 +3443,104 @@ async def count_json_key_occurrences(file_path: str, target_key: str) -> str:
         return (
             f"Error counting JSON key occurrences: {str(e)}\n{traceback.format_exc()}"
         )
+
+
+async def reconstruct_scrambled_image(
+    image_path: str, mapping_data: str, output_path: str = None
+) -> str:
+    """
+    Reconstruct an image from scrambled pieces using a mapping
+
+    Args:
+        image_path: Path to the scrambled image
+        mapping_data: String containing the mapping data (tab or space separated)
+        output_path: Path to save the reconstructed image (optional)
+
+    Returns:
+        Path to the reconstructed image or error message
+    """
+    try:
+        import os
+        import tempfile
+        from PIL import Image
+        import numpy as np
+        import re
+
+        # Load the scrambled image
+        scrambled_image = Image.open(image_path)
+        width, height = scrambled_image.size
+
+        # Determine grid size (assuming square grid and pieces)
+        # Parse the mapping data to get the grid dimensions
+        mapping_lines = mapping_data.strip().split("\n")
+        grid_size = 0
+
+        # Find the maximum row and column values to determine grid size
+        for line in mapping_lines:
+            # Skip header line if present
+            if re.match(r"^\D", line):  # Line starts with non-digit
+                continue
+
+            # Extract numbers from the line
+            numbers = re.findall(r"\d+", line)
+            if len(numbers) >= 4:  # Ensure we have enough values
+                for num in numbers:
+                    grid_size = max(
+                        grid_size, int(num) + 1
+                    )  # +1 because indices start at 0
+
+        # Calculate piece dimensions
+        piece_width = width // grid_size
+        piece_height = height // grid_size
+
+        # Create a mapping dictionary from the mapping data
+        mapping = {}
+
+        for line in mapping_lines:
+            # Skip header line if present
+            if re.match(r"^\D", line):
+                continue
+
+            # Extract numbers from the line
+            numbers = re.findall(r"\d+", line)
+            if len(numbers) >= 4:
+                orig_row, orig_col, scram_row, scram_col = map(int, numbers[:4])
+                mapping[(scram_row, scram_col)] = (orig_row, orig_col)
+
+        # Create a new image for the reconstructed result
+        reconstructed_image = Image.new("RGB", (width, height))
+
+        # Place each piece in its original position
+        for scram_pos, orig_pos in mapping.items():
+            scram_row, scram_col = scram_pos
+            orig_row, orig_col = orig_pos
+
+            # Calculate pixel coordinates
+            scram_x = scram_col * piece_width
+            scram_y = scram_row * piece_height
+            orig_x = orig_col * piece_width
+            orig_y = orig_row * piece_height
+
+            # Extract the piece from the scrambled image
+            piece = scrambled_image.crop(
+                (scram_x, scram_y, scram_x + piece_width, scram_y + piece_height)
+            )
+
+            # Place the piece in the reconstructed image
+            reconstructed_image.paste(piece, (orig_x, orig_y))
+
+        # Save the reconstructed image
+        if output_path is None:
+            # Create a temporary file if no output path is provided
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+            output_path = temp_file.name
+            temp_file.close()
+
+        reconstructed_image.save(output_path, format="PNG")
+
+        return output_path
+
+    except Exception as e:
+        import traceback
+
+        return f"Error reconstructing image: {str(e)}\n{traceback.format_exc()}"

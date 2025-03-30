@@ -999,6 +999,56 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "transcribe_youtube_segment",
+                "description": "Extract audio from a YouTube video segment and transcribe it",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "youtube_url": {
+                            "type": "string",
+                            "description": "URL of the YouTube video",
+                        },
+                        "start_time": {
+                            "type": "number",
+                            "description": "Start time in seconds",
+                        },
+                        "end_time": {
+                            "type": "number",
+                            "description": "End time in seconds",
+                        },
+                    },
+                    "required": ["youtube_url", "start_time", "end_time"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "reconstruct_scrambled_image",
+                "description": "Reconstruct an image from scrambled pieces using a mapping",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "image_path": {
+                            "type": "string",
+                            "description": "Path to the scrambled image",
+                        },
+                        "mapping_data": {
+                            "type": "string",
+                            "description": "String containing the mapping data (tab or space separated)",
+                        },
+                        "output_path": {
+                            "type": "string",
+                            "description": "Path to save the reconstructed image (optional)",
+                        },
+                    },
+                    "required": ["image_path", "mapping_data"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -1292,7 +1342,6 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                     answer = await parse_partial_json_sales(
                         file_path=function_args.get("file_path"),
                     )
-                # Add these to the function call handling section
                 elif function_name == "count_json_key_occurrences":
                     answer = await count_json_key_occurrences(
                         file_path=function_args.get("file_path"),
@@ -1304,6 +1353,18 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                         timestamp_filter=function_args.get("timestamp_filter"),
                         numeric_filter=function_args.get("numeric_filter"),
                         sort_order=function_args.get("sort_order"),
+                    )
+                elif function_name == "transcribe_youtube_segment":
+                    answer = await transcribe_youtube_segment(
+                        youtube_url=function_args.get("youtube_url"),
+                        start_time=function_args.get("start_time"),
+                        end_time=function_args.get("end_time"),
+                    )
+                elif function_name == "reconstruct_scrambled_image":
+                    answer = await reconstruct_scrambled_image(
+                        image_path=function_args.get("image_path"),
+                        mapping_data=function_args.get("mapping_data"),
+                        output_path=function_args.get("output_path"),
                     )
                 # Break after the first function call is executed
                 break
