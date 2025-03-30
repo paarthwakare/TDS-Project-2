@@ -1717,7 +1717,7 @@ async def compute_document_similarity(docs: List[str], query: str) -> str:
         matches = [docs[idx] for idx, _ in top_matches]
 
         # Create FastAPI implementation code
-        fastapi_code = """
+        fastapi_code = r"""
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -1879,15 +1879,20 @@ async def parse_function_call(query: str) -> str:
             function_name = "calculate_performance_bonus"
             arguments = {"employee_id": employee_id, "current_year": current_year}
 
-        elif re.search(issue_pattern, query):
-            match = re.search(issue_pattern, query)
+        elif (match := re.search(issue_pattern, query)):
+            # Extract issue_code and department from the regex match
             issue_code = int(match.group(1))
             department = match.group(2)
             function_name = "report_office_issue"
             arguments = {"issue_code": issue_code, "department": department}
-
         else:
-            return "Could not match query to any known function pattern."
+            raise HTTPException(status_code=400, detail="Could not match query to any known function pattern")
+
+        # Return the function name and arguments
+        return {
+            "name": function_name,
+            "arguments": json.dumps(arguments)
+        }
 
         # Create the response
         response = {"name": function_name, "arguments": json.dumps(arguments)}
@@ -1945,13 +1950,12 @@ async def execute_query(q: str):
         function_name = "calculate_performance_bonus"
         arguments = {"employee_id": employee_id, "current_year": current_year}
 
-    elif re.search(issue_pattern, q):
-        match = re.search(issue_pattern, q)
+    elif (match := re.search(issue_pattern, q)):
+        # Extract issue_code and department from the regex match
         issue_code = int(match.group(1))
         department = match.group(2)
         function_name = "report_office_issue"
         arguments = {"issue_code": issue_code, "department": department}
-
     else:
         raise HTTPException(status_code=400, detail="Could not match query to any known function pattern")
 
