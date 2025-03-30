@@ -903,6 +903,52 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "analyze_sales_with_phonetic_clustering",
+                "description": "Analyze sales data with phonetic clustering for city names",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the sales data file (CSV, Excel, etc.)",
+                        },
+                        "product_filter": {
+                            "type": "string",
+                            "description": "Product name to filter by (e.g., 'Soap')",
+                        },
+                        "min_units": {
+                            "type": "integer",
+                            "description": "Minimum number of units for filtering",
+                        },
+                        "target_city": {
+                            "type": "string",
+                            "description": "Target city to find (will use phonetic matching)",
+                        },
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "parse_partial_json_sales",
+                "description": "Parse partial JSON data from a JSONL file and calculate total sales",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the JSONL file with partial JSON data",
+                        }
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -1184,6 +1230,17 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                         section_path=function_args.get("section_path"),
                         specific_date=function_args.get("specific_date"),
                         timezone_offset=function_args.get("timezone_offset"),
+                    )
+                elif function_name == "analyze_sales_with_phonetic_clustering":
+                    answer = await analyze_sales_with_phonetic_clustering(
+                        file_path=function_args.get("file_path"),
+                        product_filter=function_args.get("product_filter"),
+                        min_units=function_args.get("min_units"),
+                        target_city=function_args.get("target_city"),
+                    )
+                elif function_name == "parse_partial_json_sales":
+                    answer = await parse_partial_json_sales(
+                        file_path=function_args.get("file_path"),
                     )
                 # Break after the first function call is executed
                 break

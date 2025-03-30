@@ -3331,3 +3331,62 @@ async def analyze_bandwidth_by_ip(
         import traceback
 
         return f"Error analyzing bandwidth: {str(e)}\n{traceback.format_exc()}"
+
+async def parse_partial_json_sales(file_path: str) -> str:
+    """
+    Parse partial JSON data from a JSONL file and calculate total sales
+
+    Args:
+        file_path: Path to the JSONL file with partial JSON data
+
+    Returns:
+        Total sales value
+    """
+    try:
+        import json
+        import re
+        
+        total_sales = 0
+        processed_rows = 0
+        error_rows = 0
+        
+        # Regular expression to extract sales values
+        # This pattern looks for "sales":number or "sales": number
+        sales_pattern = r'"sales"\s*:\s*(\d+\.?\d*)'
+        
+        with open(file_path, 'r', encoding='utf-8') as file:
+            for line in file:
+                try:
+                    # Try standard JSON parsing first
+                    try:
+                        data = json.loads(line.strip())
+                        if 'sales' in data:
+                            total_sales += float(data['sales'])
+                            processed_rows += 1
+                            continue
+                    except json.JSONDecodeError:
+                        pass
+                    
+                    # If standard parsing fails, use regex
+                    match = re.search(sales_pattern, line)
+                    if match:
+                        sales_value = float(match.group(1))
+                        total_sales += sales_value
+                        processed_rows += 1
+                    else:
+                        error_rows += 1
+                        
+                except Exception as e:
+                    error_rows += 1
+                    continue
+        
+        # Format the response
+        if processed_rows > 0:
+            # Return just the total sales value as requested
+            return f"{total_sales:.2f}"
+        else:
+            return "No valid sales data found in the file."
+        
+    except Exception as e:
+        import traceback
+        return f"Error parsing partial JSON: {str(e)}\n{traceback.format_exc()}"
