@@ -1845,7 +1845,9 @@ async def parse_function_call(query: str) -> str:
 
         # Define regex patterns for each function
         ticket_pattern = r"status of ticket (\d+)"
-        meeting_pattern = r"Schedule a meeting on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) in (Room \w+)"
+        meeting_pattern = (
+            r"Schedule a meeting on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) in (Room \w+)"
+        )
         expense_pattern = r"expense balance for employee (\d+)"
         bonus_pattern = r"Calculate performance bonus for employee (\d+) for (\d{4})"
         issue_pattern = r"Report office issue (\d+) for the (\w+) department"
@@ -2839,3 +2841,493 @@ async def count_unique_students(file_path: str) -> str:
         import traceback
 
         return f"Error counting unique students: {str(e)}\n{traceback.format_exc()}"
+
+
+async def analyze_apache_logs(
+    file_path: str,
+    section_path: str = None,
+    day_of_week: str = None,
+    start_hour: int = None,
+    end_hour: int = None,
+    request_method: str = None,
+    status_range: tuple = None,
+    timezone_offset: str = None,
+) -> str:
+    """
+    Analyze Apache log files to count requests matching specific criteria
+
+    Args:
+        file_path: Path to the Apache log file (can be gzipped)
+        section_path: Path section to filter (e.g., '/telugump3/')
+        day_of_week: Day to filter (e.g., 'Tuesday')
+        start_hour: Starting hour for time window (inclusive)
+        end_hour: Ending hour for time window (exclusive)
+        request_method: HTTP method to filter (e.g., 'GET')
+        status_range: Tuple of (min_status, max_status) for HTTP status codes
+        timezone_offset: Timezone offset in format '+0000' or '-0500'
+
+    Returns:
+        Count of matching requests and analysis details
+    """
+    try:
+        import gzip
+        import re
+        from datetime import datetime
+        import calendar
+
+        # Define day name to number mapping
+        day_name_to_num = {
+            "monday": 0,
+            "tuesday": 1,
+            "wednesday": 2,
+            "thursday": 3,
+            "friday": 4,
+            "saturday": 5,
+            "sunday": 6,
+        }
+
+        # Convert day_of_week to lowercase if provided
+        if day_of_week:
+            day_of_week = day_of_week.lower()
+            if day_of_week not in day_name_to_num:
+                return f"Invalid day of week: {day_of_week}"
+
+        # Set default status range if not provided
+        if status_range is None:
+            status_range = (200, 299)
+
+        # Regular expression for parsing Apache log entries
+        # This pattern handles the complex format with quoted fields and unquoted time field
+        log_pattern = r'([^ ]*) ([^ ]*) ([^ ]*) \[([^]]*)\] "([^"]*)" ([^ ]*) ([^ ]*) "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)"'
+
+        # Open the file (handling gzip if needed)
+        if file_path.endswith(".gz"):
+            open_func = gzip.open
+            mode = "rt"  # text mode for gzip
+        else:
+            open_func = open
+            mode = "r"
+
+        # Counter for matching requests
+        matching_requests = 0
+        total_requests = 0
+        parsing_errors = 0
+
+        # Process the log file line by line
+        with open_func(file_path, mode, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                total_requests += 1
+
+                try:
+                    # Handle escaped quotes in user agent field
+                    # This is a simplification - for complex cases, a more robust parser might be needed
+                    line = line.replace('\\"', "~~ESCAPED_QUOTE~~")
+
+                    # Parse the log entry
+                    match = re.match(log_pattern, line)
+                    if not match:
+                        parsing_errors += 1
+                        continue
+
+                    # Extract fields
+                    (
+                        ip,
+                        remote_logname,
+                        remote_user,
+                        time_str,
+                        request,
+                        status,
+                        size,
+                        referer,
+                        user_agent,
+                        vhost,
+                        server,
+                    ) = match.groups()
+
+                    # Restore escaped quotes
+                    user_agent = user_agent.replace("~~ESCAPED_QUOTE~~", '"')
+
+                    # Parse the time string
+                    # Format: [01/May/2024:00:00:00 +0000]
+                    time_match = re.match(
+                        r"\[(\d+)/(\w+)/(\d+):(\d+):(\d+):(\d+) ([+-]\d+)\]", time_str
+                    )
+                    if not time_match:
+                        parsing_errors += 1
+                        continue
+
+                    day, month, year, hour, minute, second, log_tz = time_match.groups()
+
+                    # Convert month name to number
+                    month_num = {
+                        "Jan": 1,
+                        "Feb": 2,
+                        "Mar": 3,
+                        "Apr": 4,
+                        "May": 5,
+                        "Jun": 6,
+                        "Jul": 7,
+                        "Aug": 8,
+                        "Sep": 9,
+                        "Oct": 10,
+                        "Nov": 11,
+                        "Dec": 12,
+                    }.get(month, None)
+
+                    if not month_num:
+                        parsing_errors += 1
+                        continue
+
+                    # Create datetime object
+                    log_date = datetime(
+                        int(year),
+                        month_num,
+                        int(day),
+                        int(hour),
+                        int(minute),
+                        int(second),
+                    )
+
+                    # Apply timezone adjustment if needed
+                    if timezone_offset and timezone_offset != log_tz:
+                        # Parse the timezone offsets
+                        log_tz_hours = int(log_tz[1:3])
+                        log_tz_minutes = int(log_tz[3:5])
+                        log_tz_sign = 1 if log_tz[0] == "+" else -1
+                        log_tz_offset = log_tz_sign * (
+                            log_tz_hours * 60 + log_tz_minutes
+                        )
+
+                        target_tz_hours = int(timezone_offset[1:3])
+                        target_tz_minutes = int(timezone_offset[3:5])
+                        target_tz_sign = 1 if timezone_offset[0] == "+" else -1
+                        target_tz_offset = target_tz_sign * (
+                            target_tz_hours * 60 + target_tz_minutes
+                        )
+
+                        # Calculate the difference in minutes
+                        tz_diff_minutes = target_tz_offset - log_tz_offset
+
+                        # Adjust the datetime
+                        from datetime import timedelta
+
+                        log_date = log_date + timedelta(minutes=tz_diff_minutes)
+
+                    # Parse the request
+                    request_parts = request.split()
+                    if len(request_parts) < 2:
+                        parsing_errors += 1
+                        continue
+
+                    method, url = request_parts[0], request_parts[1]
+
+                    # Apply filters
+
+                    # 1. Check day of week
+                    if (
+                        day_of_week
+                        and log_date.weekday() != day_name_to_num[day_of_week]
+                    ):
+                        continue
+
+                    # 2. Check hour range
+                    if start_hour is not None and log_date.hour < start_hour:
+                        continue
+                    if end_hour is not None and log_date.hour >= end_hour:
+                        continue
+
+                    # 3. Check request method
+                    if request_method and method.upper() != request_method.upper():
+                        continue
+
+                    # 4. Check URL section
+                    if section_path and section_path not in url:
+                        continue
+
+                    # 5. Check status code
+                    try:
+                        status_code = int(status)
+                        if status_range and (
+                            status_code < status_range[0]
+                            or status_code > status_range[1]
+                        ):
+                            continue
+                    except ValueError:
+                        parsing_errors += 1
+                        continue
+
+                    # If we got here, the request matches all criteria
+                    matching_requests += 1
+
+                except Exception as e:
+                    parsing_errors += 1
+                    continue
+
+        # Create a detailed response
+        response = f"""
+# Apache Log Analysis Results
+
+## Request Count
+**{matching_requests}** requests matched the specified criteria.
+
+## Analysis Parameters
+- Section Path: {section_path if section_path else 'All'}
+- Day of Week: {day_of_week.capitalize() if day_of_week else 'All'}
+- Time Window: {f"{start_hour}:00 to {end_hour}:00" if start_hour is not None and end_hour is not None else "All hours"}
+- Request Method: {request_method if request_method else 'All'}
+- Status Code Range: {status_range}
+- Timezone Adjustment: {timezone_offset if timezone_offset else 'None'}
+
+## Processing Statistics
+- Total Log Entries: {total_requests}
+- Parsing Errors: {parsing_errors}
+- Success Rate: {((total_requests - parsing_errors) / total_requests * 100) if total_requests > 0 else 0:.2f}%
+
+## Interpretation
+This analysis shows the number of requests that match all specified criteria in the Apache log file.
+"""
+
+        return response
+
+    except Exception as e:
+        import traceback
+
+        return f"Error analyzing Apache logs: {str(e)}\n{traceback.format_exc()}"
+
+
+async def analyze_bandwidth_by_ip(
+    file_path: str,
+    section_path: str = None,
+    specific_date: str = None,
+    timezone_offset: str = None,
+) -> str:
+    """
+    Analyze Apache log files to identify top bandwidth consumers by IP address
+
+    Args:
+        file_path: Path to the Apache log file (can be gzipped)
+        section_path: Path section to filter (e.g., '/kannada/')
+        specific_date: Date to filter in format 'YYYY-MM-DD'
+        timezone_offset: Timezone offset in format '+0000' or '-0500'
+
+    Returns:
+        Analysis of bandwidth usage by IP address
+    """
+    try:
+        import gzip
+        import re
+        from datetime import datetime
+        from collections import defaultdict
+        import heapq
+
+        # Open the file (handling gzip if needed)
+        if file_path.endswith(".gz"):
+            open_func = gzip.open
+            mode = "rt"  # text mode for gzip
+        else:
+            open_func = open
+            mode = "r"
+
+        # Initialize data structures
+        ip_bandwidth = defaultdict(int)  # Maps IP addresses to total bytes
+        ip_requests = defaultdict(int)  # Maps IP addresses to request count
+        total_requests = 0
+        filtered_requests = 0
+        parsing_errors = 0
+
+        # Parse the specific date if provided
+        target_date = None
+        if specific_date:
+            try:
+                target_date = datetime.strptime(specific_date, "%Y-%m-%d")
+            except ValueError:
+                return f"Invalid date format: {specific_date}. Please use YYYY-MM-DD format."
+
+        # Regular expression for parsing Apache log entries
+        # This pattern handles the complex format with quoted fields and unquoted time field
+        log_pattern = r'([^ ]*) ([^ ]*) ([^ ]*) \[([^]]*)\] "([^"]*)" ([^ ]*) ([^ ]*) "([^"]*)" "([^"]*)" "([^"]*)" "([^"]*)"'
+
+        # Process the log file line by line
+        with open_func(file_path, mode, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                total_requests += 1
+
+                try:
+                    # Handle escaped quotes in user agent field
+                    line = line.replace('\\"', "~~ESCAPED_QUOTE~~")
+
+                    # Parse the log entry
+                    match = re.match(log_pattern, line)
+                    if not match:
+                        parsing_errors += 1
+                        continue
+
+                    # Extract fields
+                    (
+                        ip,
+                        remote_logname,
+                        remote_user,
+                        time_str,
+                        request,
+                        status,
+                        size,
+                        referer,
+                        user_agent,
+                        vhost,
+                        server,
+                    ) = match.groups()
+
+                    # Restore escaped quotes
+                    user_agent = user_agent.replace("~~ESCAPED_QUOTE~~", '"')
+
+                    # Parse the time string
+                    # Format: [01/May/2024:00:00:00 +0000]
+                    time_match = re.match(
+                        r"\[(\d+)/(\w+)/(\d+):(\d+):(\d+):(\d+) ([+-]\d+)\]", time_str
+                    )
+                    if not time_match:
+                        parsing_errors += 1
+                        continue
+
+                    day, month, year, hour, minute, second, log_tz = time_match.groups()
+
+                    # Convert month name to number
+                    month_num = {
+                        "Jan": 1,
+                        "Feb": 2,
+                        "Mar": 3,
+                        "Apr": 4,
+                        "May": 5,
+                        "Jun": 6,
+                        "Jul": 7,
+                        "Aug": 8,
+                        "Sep": 9,
+                        "Oct": 10,
+                        "Nov": 11,
+                        "Dec": 12,
+                    }.get(month, None)
+
+                    if not month_num:
+                        parsing_errors += 1
+                        continue
+
+                    # Create datetime object
+                    log_date = datetime(
+                        int(year),
+                        month_num,
+                        int(day),
+                        int(hour),
+                        int(minute),
+                        int(second),
+                    )
+
+                    # Apply timezone adjustment if needed
+                    if timezone_offset and timezone_offset != log_tz:
+                        # Parse the timezone offsets
+                        log_tz_hours = int(log_tz[1:3])
+                        log_tz_minutes = int(log_tz[3:5])
+                        log_tz_sign = 1 if log_tz[0] == "+" else -1
+                        log_tz_offset = log_tz_sign * (
+                            log_tz_hours * 60 + log_tz_minutes
+                        )
+
+                        target_tz_hours = int(timezone_offset[1:3])
+                        target_tz_minutes = int(timezone_offset[3:5])
+                        target_tz_sign = 1 if timezone_offset[0] == "+" else -1
+                        target_tz_offset = target_tz_sign * (
+                            target_tz_hours * 60 + target_tz_minutes
+                        )
+
+                        # Calculate the difference in minutes
+                        tz_diff_minutes = target_tz_offset - log_tz_offset
+
+                        # Adjust the datetime
+                        from datetime import timedelta
+
+                        log_date = log_date + timedelta(minutes=tz_diff_minutes)
+
+                    # Check if the log entry matches the target date
+                    if target_date and (
+                        log_date.year != target_date.year
+                        or log_date.month != target_date.month
+                        or log_date.day != target_date.day
+                    ):
+                        continue
+
+                    # Parse the request
+                    request_parts = request.split()
+                    if len(request_parts) < 2:
+                        parsing_errors += 1
+                        continue
+
+                    method, url = request_parts[0], request_parts[1]
+
+                    # Check if the URL starts with the specified section path
+                    if section_path and not url.startswith(section_path):
+                        continue
+
+                    # Parse the size field
+                    try:
+                        bytes_sent = int(size) if size != "-" else 0
+                    except ValueError:
+                        bytes_sent = 0
+
+                    # Update the IP bandwidth and request count
+                    ip_bandwidth[ip] += bytes_sent
+                    ip_requests[ip] += 1
+                    filtered_requests += 1
+
+                except Exception as e:
+                    parsing_errors += 1
+                    continue
+
+        # Find the top bandwidth consumers
+        if not ip_bandwidth:
+            return "No matching requests found."
+
+        # Sort IPs by bandwidth consumption (descending)
+        top_ips = sorted(ip_bandwidth.items(), key=lambda x: x[1], reverse=True)
+
+        # Format the results
+        top_ip, top_bandwidth = top_ips[0]
+
+        # Create a detailed response
+        response = f"""
+# Bandwidth Analysis Results
+
+## Top Bandwidth Consumer
+- **IP Address**: {top_ip}
+- **Total Bytes Downloaded**: {top_bandwidth}
+- **Number of Requests**: {ip_requests[top_ip]}
+
+## Analysis Parameters
+- Section Path: {section_path if section_path else 'All'}
+- Date: {specific_date if specific_date else 'All dates'}
+- Timezone Adjustment: {timezone_offset if timezone_offset else 'None'}
+
+## Top 5 Bandwidth Consumers
+| IP Address | Bytes Downloaded | Number of Requests | Average Bytes per Request |
+|------------|------------------|-------------------|--------------------------|
+"""
+
+        # Add the top 5 IPs (or fewer if there aren't 5)
+        for i, (ip, bandwidth) in enumerate(top_ips[:5]):
+            avg_bytes = bandwidth / ip_requests[ip] if ip_requests[ip] > 0 else 0
+            response += (
+                f"| {ip} | {bandwidth} | {ip_requests[ip]} | {avg_bytes:.2f} |\n"
+            )
+
+        response += f"""
+## Processing Statistics
+- Total Log Entries: {total_requests}
+- Filtered Requests: {filtered_requests}
+- Parsing Errors: {parsing_errors}
+- Success Rate: {((total_requests - parsing_errors) / total_requests * 100) if total_requests > 0 else 0:.2f}%
+"""
+
+        return response
+
+    except Exception as e:
+        import traceback
+
+        return f"Error analyzing bandwidth: {str(e)}\n{traceback.format_exc()}"

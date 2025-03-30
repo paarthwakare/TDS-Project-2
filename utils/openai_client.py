@@ -828,6 +828,81 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "analyze_apache_logs",
+                "description": "Analyze Apache log files to count requests matching specific criteria",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the Apache log file (can be gzipped)",
+                        },
+                        "section_path": {
+                            "type": "string",
+                            "description": "Path section to filter (e.g., '/telugump3/')",
+                        },
+                        "day_of_week": {
+                            "type": "string",
+                            "description": "Day to filter (e.g., 'Tuesday')",
+                        },
+                        "start_hour": {
+                            "type": "integer",
+                            "description": "Starting hour for time window (inclusive)",
+                        },
+                        "end_hour": {
+                            "type": "integer",
+                            "description": "Ending hour for time window (exclusive)",
+                        },
+                        "request_method": {
+                            "type": "string",
+                            "description": "HTTP method to filter (e.g., 'GET')",
+                        },
+                        "status_range": {
+                            "type": "array",
+                            "items": {"type": "integer"},
+                            "description": "Tuple of (min_status, max_status) for HTTP status codes",
+                        },
+                        "timezone_offset": {
+                            "type": "string",
+                            "description": "Timezone offset in format '+0000' or '-0500'",
+                        },
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "analyze_bandwidth_by_ip",
+                "description": "Analyze Apache log files to identify top bandwidth consumers by IP address",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the Apache log file (can be gzipped)",
+                        },
+                        "section_path": {
+                            "type": "string",
+                            "description": "Path section to filter (e.g., '/kannada/')",
+                        },
+                        "specific_date": {
+                            "type": "string",
+                            "description": "Date to filter in format 'YYYY-MM-DD'",
+                        },
+                        "timezone_offset": {
+                            "type": "string",
+                            "description": "Timezone offset in format '+0000' or '-0500'",
+                        },
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -1091,6 +1166,24 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 elif function_name == "count_unique_students":
                     answer = await count_unique_students(
                         file_path=function_args.get("file_path"),
+                    )
+                elif function_name == "analyze_apache_logs":
+                    answer = await analyze_apache_logs(
+                        file_path=function_args.get("file_path"),
+                        section_path=function_args.get("section_path"),
+                        day_of_week=function_args.get("day_of_week"),
+                        start_hour=function_args.get("start_hour"),
+                        end_hour=function_args.get("end_hour"),
+                        request_method=function_args.get("request_method"),
+                        status_range=function_args.get("status_range"),
+                        timezone_offset=function_args.get("timezone_offset"),
+                    )
+                elif function_name == "analyze_bandwidth_by_ip":
+                    answer = await analyze_bandwidth_by_ip(
+                        file_path=function_args.get("file_path"),
+                        section_path=function_args.get("section_path"),
+                        specific_date=function_args.get("specific_date"),
+                        timezone_offset=function_args.get("timezone_offset"),
                     )
                 # Break after the first function call is executed
                 break
