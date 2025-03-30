@@ -949,6 +949,56 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "count_json_key_occurrences",
+                "description": "Count occurrences of a specific key in a nested JSON structure",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the JSON file",
+                        },
+                        "target_key": {
+                            "type": "string",
+                            "description": "The key to search for in the JSON structure",
+                        },
+                    },
+                    "required": ["file_path", "target_key"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_duckdb_query",
+                "description": "Generate and format DuckDB SQL queries for various data analysis tasks",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query_type": {
+                            "type": "string",
+                            "description": "Type of query to generate (e.g., 'post_comments', 'user_activity')",
+                        },
+                        "timestamp_filter": {
+                            "type": "string",
+                            "description": "ISO timestamp for filtering data (e.g., '2025-02-26T00:17:09.465Z')",
+                        },
+                        "numeric_filter": {
+                            "type": "integer",
+                            "description": "Numeric threshold for filtering (e.g., 5 for star count)",
+                        },
+                        "sort_order": {
+                            "type": "string",
+                            "description": "Sort order for results ('ASC' or 'DESC')",
+                        },
+                    },
+                    "required": ["query_type"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -1241,6 +1291,19 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 elif function_name == "parse_partial_json_sales":
                     answer = await parse_partial_json_sales(
                         file_path=function_args.get("file_path"),
+                    )
+                # Add these to the function call handling section
+                elif function_name == "count_json_key_occurrences":
+                    answer = await count_json_key_occurrences(
+                        file_path=function_args.get("file_path"),
+                        target_key=function_args.get("target_key"),
+                    )
+                elif function_name == "generate_duckdb_query":
+                    answer = await generate_duckdb_query(
+                        query_type=function_args.get("query_type"),
+                        timestamp_filter=function_args.get("timestamp_filter"),
+                        numeric_filter=function_args.get("numeric_filter"),
+                        sort_order=function_args.get("sort_order"),
                     )
                 # Break after the first function call is executed
                 break

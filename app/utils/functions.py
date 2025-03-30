@@ -3332,6 +3332,7 @@ async def analyze_bandwidth_by_ip(
 
         return f"Error analyzing bandwidth: {str(e)}\n{traceback.format_exc()}"
 
+
 async def parse_partial_json_sales(file_path: str) -> str:
     """
     Parse partial JSON data from a JSONL file and calculate total sales
@@ -3345,28 +3346,28 @@ async def parse_partial_json_sales(file_path: str) -> str:
     try:
         import json
         import re
-        
+
         total_sales = 0
         processed_rows = 0
         error_rows = 0
-        
+
         # Regular expression to extract sales values
         # This pattern looks for "sales":number or "sales": number
         sales_pattern = r'"sales"\s*:\s*(\d+\.?\d*)'
-        
-        with open(file_path, 'r', encoding='utf-8') as file:
+
+        with open(file_path, "r", encoding="utf-8") as file:
             for line in file:
                 try:
                     # Try standard JSON parsing first
                     try:
                         data = json.loads(line.strip())
-                        if 'sales' in data:
-                            total_sales += float(data['sales'])
+                        if "sales" in data:
+                            total_sales += float(data["sales"])
                             processed_rows += 1
                             continue
                     except json.JSONDecodeError:
                         pass
-                    
+
                     # If standard parsing fails, use regex
                     match = re.search(sales_pattern, line)
                     if match:
@@ -3375,18 +3376,70 @@ async def parse_partial_json_sales(file_path: str) -> str:
                         processed_rows += 1
                     else:
                         error_rows += 1
-                        
+
                 except Exception as e:
                     error_rows += 1
                     continue
-        
+
         # Format the response
         if processed_rows > 0:
             # Return just the total sales value as requested
             return f"{total_sales:.2f}"
         else:
             return "No valid sales data found in the file."
-        
+
     except Exception as e:
         import traceback
+
         return f"Error parsing partial JSON: {str(e)}\n{traceback.format_exc()}"
+
+
+async def count_json_key_occurrences(file_path: str, target_key: str) -> str:
+    """
+    Count occurrences of a specific key in a nested JSON structure
+
+    Args:
+        file_path: Path to the JSON file
+        target_key: The key to search for in the JSON structure
+
+    Returns:
+        Count of occurrences of the target key
+    """
+    try:
+        import json
+
+        # Load the JSON file
+        with open(file_path, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        # Initialize counter
+        count = 0
+
+        # Define a recursive function to traverse the JSON structure
+        def traverse_json(obj):
+            nonlocal count
+
+            if isinstance(obj, dict):
+                # Check keys at this level
+                for key in obj:
+                    if key == target_key:
+                        count += 1
+                    # Recursively check values that are objects or arrays
+                    traverse_json(obj[key])
+            elif isinstance(obj, list):
+                # Recursively check each item in the array
+                for item in obj:
+                    traverse_json(item)
+
+        # Start traversal
+        traverse_json(data)
+
+        # Return just the count as a string
+        return str(count)
+
+    except Exception as e:
+        import traceback
+
+        return (
+            f"Error counting JSON key occurrences: {str(e)}\n{traceback.format_exc()}"
+        )
