@@ -1845,9 +1845,7 @@ async def parse_function_call(query: str) -> str:
 
         # Define regex patterns for each function
         ticket_pattern = r"status of ticket (\d+)"
-        meeting_pattern = (
-            r"Schedule a meeting on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) in (Room \w+)"
-        )
+        meeting_pattern = r"Schedule a meeting on (\d{4}-\d{2}-\d{2}) at (\d{2}:\d{2}) in (Room \w+)"
         expense_pattern = r"expense balance for employee (\d+)"
         bonus_pattern = r"Calculate performance bonus for employee (\d+) for (\d{4})"
         issue_pattern = r"Report office issue (\d+) for the (\w+) department"
@@ -2536,3 +2534,308 @@ Failed to format with Prettier: {str(e)}
 
     except Exception as e:
         return f"Error converting PDF to Markdown: {str(e)}"
+
+
+async def clean_sales_data_and_calculate_margin(
+    file_path: str, cutoff_date_str: str, product_filter: str, country_filter: str
+) -> str:
+    """
+    Clean sales data from Excel and calculate margin for filtered transactions
+
+    Args:
+        file_path: Path to the Excel file
+        cutoff_date_str: Cutoff date string in format like "Sun Feb 06 2022 18:40:58 GMT+0530 (India Standard Time)"
+        product_filter: Product name to filter by (e.g., "Iota")
+        country_filter: Country to filter by after standardization (e.g., "UK")
+
+    Returns:
+        Calculated margin as a percentage
+    """
+    try:
+        import pandas as pd
+        import re
+        from datetime import datetime
+        import dateutil.parser
+
+        # Parse the cutoff date
+        try:
+            # Extract the date part without timezone info for easier parsing
+            date_match = re.search(
+                r"([A-Za-z]+ [A-Za-z]+ \d+ \d+ \d+:\d+:\d+)", cutoff_date_str
+            )
+            if date_match:
+                date_str = date_match.group(1)
+                cutoff_date = datetime.strptime(date_str, "%a %b %d %Y %H:%M:%S")
+            else:
+                # Fallback to dateutil parser which handles various formats
+                cutoff_date = dateutil.parser.parse(cutoff_date_str)
+        except Exception as e:
+            return f"Error parsing date: {str(e)}"
+
+        # Read the Excel file
+        df = pd.read_excel(file_path)
+
+        # Print columns for debugging
+        print(f"Columns in Excel file: {df.columns.tolist()}")
+
+        # Map column names to expected names (case-insensitive and partial matching)
+        column_mapping = {}
+        expected_columns = {
+            "customer": ["customer", "customer name", "client", "client name", "buyer"],
+            "country": ["country", "nation", "region", "location"],
+            "date": ["date", "transaction date", "sale date", "order date"],
+            "product": [
+                "product",
+                "item",
+                "product name",
+                "item name",
+                "goods",
+                "product/code",
+            ],
+            "sales": ["sales", "revenue", "amount", "sale amount", "price"],
+            "cost": ["cost", "expense", "cost price", "purchase price"],
+            "transaction_id": [
+                "transaction id",
+                "transaction",
+                "id",
+                "order id",
+                "order number",
+                "transactionid",
+            ],
+        }
+
+        # Find matching columns with more flexible matching
+        for expected_col, possible_names in expected_columns.items():
+            # First try exact match (case-insensitive)
+            for col in df.columns:
+                col_lower = col.lower()
+                # Try exact match first
+                if any(possible.lower() == col_lower for possible in possible_names):
+                    column_mapping[expected_col] = col
+                    break
+
+            # If no exact match, try partial match
+            if expected_col not in column_mapping:
+                for col in df.columns:
+                    col_lower = col.lower()
+                    # Try partial match (contains)
+                    if any(
+                        possible.lower() in col_lower or col_lower in possible.lower()
+                        for possible in possible_names
+                    ):
+                        column_mapping[expected_col] = col
+                        break
+
+            # If still no match, try checking if column contains '/' and split parts
+            if expected_col not in column_mapping:
+                for col in df.columns:
+                    if "/" in col:
+                        parts = [part.strip().lower() for part in col.split("/")]
+                        if any(
+                            possible.lower() in parts for possible in possible_names
+                        ):
+                            column_mapping[expected_col] = col
+                            break
+
+        # Check if we have the minimum required columns
+        required_cols = ["date", "product", "country", "sales", "cost"]
+        missing_cols = [col for col in required_cols if col not in column_mapping]
+        if missing_cols:
+            # Try one more approach - check if any column contains the missing column name
+            for missing_col in list(missing_cols):
+                for col in df.columns:
+                    col_lower = col.lower()
+                    if missing_col in col_lower:
+                        column_mapping[missing_col] = col
+                        missing_cols.remove(missing_col)
+                        break
+
+        if missing_cols:
+            return f"Error: Missing required columns: {', '.join(missing_cols)}"
+
+        # Create a standardized dataframe with mapped columns
+        std_df = pd.DataFrame()
+        for std_col, orig_col in column_mapping.items():
+            std_df[std_col] = df[orig_col]
+
+        # Clean and transform data
+        # 1. Standardize country names
+        country_mapping = {
+            "usa": "US",
+            "u.s.a": "US",
+            "u.s.": "US",
+            "united states": "US",
+            "america": "US",
+            "uk": "UK",
+            "u.k": "UK",
+            "u.k.": "UK",
+            "united kingdom": "UK",
+            "britain": "UK",
+            "england": "UK",
+            "fra": "FR",
+            "france": "FR",
+            "bra": "BR",
+            "brazil": "BR",
+            "ind": "IN",
+            "india": "IN",
+        }
+
+        # Create a function to standardize country names
+        def standardize_country(country):
+            if pd.isna(country):
+                return None
+            country = str(country).strip().lower()
+            return country_mapping.get(country, country.upper())
+
+        std_df["country"] = std_df["country"].apply(standardize_country)
+
+        # 2. Standardize dates
+        def parse_date(date_val):
+            if pd.isna(date_val):
+                return None
+
+            if isinstance(date_val, datetime):
+                return date_val
+
+            date_str = str(date_val).strip()
+            try:
+                # Try different date formats
+                for fmt in ["%m-%d-%Y", "%Y/%m/%d", "%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y"]:
+                    try:
+                        return datetime.strptime(date_str, fmt)
+                    except ValueError:
+                        continue
+                # If none of the formats match, use dateutil parser
+                return dateutil.parser.parse(date_str)
+            except:
+                return None
+
+        std_df["date"] = std_df["date"].apply(parse_date)
+
+        # 3. Extract product name (before the slash if present)
+        def extract_product_name(product):
+            if pd.isna(product):
+                return None
+            product = str(product)
+            if "/" in product:
+                return product.split("/")[0].strip()
+            return product.strip()
+
+        std_df["product"] = std_df["product"].apply(extract_product_name)
+
+        # 4. Clean sales and cost fields
+        def clean_numeric(value):
+            if pd.isna(value):
+                return None
+            if isinstance(value, (int, float)):
+                return float(value)
+            value = str(value).replace("USD", "").replace("$", "").strip()
+            try:
+                return float(value)
+            except:
+                return None
+
+        std_df["sales"] = std_df["sales"].apply(clean_numeric)
+        std_df["cost"] = std_df["cost"].apply(clean_numeric)
+
+        # Handle missing cost values (50% of sales as a fallback)
+        std_df["cost"] = std_df.apply(
+            lambda row: (
+                row["sales"] * 0.5
+                if pd.isna(row["cost"]) and not pd.isna(row["sales"])
+                else row["cost"]
+            ),
+            axis=1,
+        )
+
+        # Filter data based on criteria
+        filtered_df = std_df.copy()
+
+        # Apply filters one by one with error handling
+        if "date" in std_df.columns:
+            filtered_df = filtered_df[filtered_df["date"] <= cutoff_date]
+
+        if "product" in std_df.columns:
+            # Handle case where product column might contain NaN values
+            filtered_df = filtered_df[
+                filtered_df["product"].fillna("").str.lower() == product_filter.lower()
+            ]
+
+        if "country" in std_df.columns:
+            filtered_df = filtered_df[
+                filtered_df["country"].fillna("").str.lower() == country_filter.lower()
+            ]
+
+        # Calculate total sales and cost
+        if len(filtered_df) == 0:
+            return "0.0000"  # No matching records
+
+        total_sales = filtered_df["sales"].sum()
+        total_cost = filtered_df["cost"].sum()
+
+        # Calculate margin
+        if total_sales == 0:
+            margin = 0
+        else:
+            margin = (total_sales - total_cost) / total_sales
+
+        # Format as percentage with 4 decimal places
+        margin_percentage = f"{margin:.4f}"
+
+        return margin_percentage
+
+    except Exception as e:
+        import traceback
+
+        return f"Error processing sales data: {str(e)}\n{traceback.format_exc()}"
+
+
+async def count_unique_students(file_path: str) -> str:
+    """
+    Count unique students in a text file based on student IDs
+
+    Args:
+        file_path: Path to the text file with student marks
+
+    Returns:
+        Number of unique students
+    """
+    try:
+        import re
+
+        # Set to store unique student IDs
+        unique_students = set()
+
+        # Regular expressions to extract student IDs with different patterns
+        id_patterns = [
+            r"Student\s+ID\s*[:=]?\s*(\w+)",  # Student ID: 12345
+            r"ID\s*[:=]?\s*(\w+)",  # ID: 12345
+            r"Roll\s+No\s*[:=]?\s*(\w+)",  # Roll No: 12345
+            r"Roll\s+Number\s*[:=]?\s*(\w+)",  # Roll Number: 12345
+            r"Registration\s+No\s*[:=]?\s*(\w+)",  # Registration No: 12345
+            r"(\d{6,10})",  # Just a 6-10 digit number (likely a student ID)
+        ]
+
+        # Read the file line by line
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as file:
+            for line in file:
+                # Try each pattern to find student IDs
+                for pattern in id_patterns:
+                    matches = re.finditer(pattern, line, re.IGNORECASE)
+                    for match in matches:
+                        student_id = match.group(1).strip()
+                        # Validate the ID (basic check to avoid false positives)
+                        if (
+                            len(student_id) >= 3
+                        ):  # Most student IDs are at least 3 chars
+                            unique_students.add(student_id)
+
+        # Count unique student IDs
+        count = len(unique_students)
+
+        return str(count)
+
+    except Exception as e:
+        import traceback
+
+        return f"Error counting unique students: {str(e)}\n{traceback.format_exc()}"

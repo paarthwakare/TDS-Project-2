@@ -777,6 +777,57 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "clean_sales_data_and_calculate_margin",
+                "description": "Clean sales data from Excel and calculate margin for filtered transactions",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the Excel file",
+                        },
+                        "cutoff_date_str": {
+                            "type": "string",
+                            "description": "Cutoff date string (e.g., 'Sun Feb 06 2022 18:40:58 GMT+0530 (India Standard Time)')",
+                        },
+                        "product_filter": {
+                            "type": "string",
+                            "description": "Product name to filter by (e.g., 'Iota')",
+                        },
+                        "country_filter": {
+                            "type": "string",
+                            "description": "Country to filter by after standardization (e.g., 'UK')",
+                        },
+                    },
+                    "required": [
+                        "file_path",
+                        "cutoff_date_str",
+                        "product_filter",
+                        "country_filter",
+                    ],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "count_unique_students",
+                "description": "Count unique students in a text file based on student IDs",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": {
+                            "type": "string",
+                            "description": "Path to the text file with student marks",
+                        }
+                    },
+                    "required": ["file_path"],
+                },
+            },
+        },
     ]
 
     # Create the messages to send to the API
@@ -1028,6 +1079,17 @@ async def get_openai_response(question: str, file_path: Optional[str] = None) ->
 
                 elif function_name == "convert_pdf_to_markdown":
                     answer = await convert_pdf_to_markdown(
+                        file_path=function_args.get("file_path"),
+                    )
+                elif function_name == "clean_sales_data_and_calculate_margin":
+                    answer = await clean_sales_data_and_calculate_margin(
+                        file_path=function_args.get("file_path"),
+                        cutoff_date_str=function_args.get("cutoff_date_str"),
+                        product_filter=function_args.get("product_filter"),
+                        country_filter=function_args.get("country_filter"),
+                    )
+                elif function_name == "count_unique_students":
+                    answer = await count_unique_students(
                         file_path=function_args.get("file_path"),
                     )
                 # Break after the first function call is executed
