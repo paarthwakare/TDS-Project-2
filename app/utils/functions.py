@@ -182,50 +182,51 @@ async def extract_zip_and_process_files(file_path: str, operation: str) -> str:
             for root, _, files in os.walk(temp_dir):
                 for file in files:
                     _, ext = os.path.splitext(file)
-                    if ext:
-                        ext = ext.lower()
-                        extension_counts[ext] = extension_counts.get(ext, 0) + 1
+                    ext = ext.lower()
+                    extension_counts[ext] = extension_counts.get(ext, 0) + 1
 
             return json.dumps(extension_counts)
 
-        elif operation == "find_latest_file":
-            # Find the most recently modified file
-            latest_file = None
-            latest_time = None
+        elif operation == "list":
+            # List all files in the zip with their sizes
+            file_list = []
 
-            for root, _, files in os.walk(temp_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    mod_time = os.path.getmtime(file_path)
+            for root, dirs, files in os.walk(temp_dir):
+                # Get relative path from temp_dir
+                rel_path = os.path.relpath(root, temp_dir)
+                if rel_path == ".":
+                    rel_path = ""
 
-                    if latest_time is None or mod_time > latest_time:
-                        latest_time = mod_time
-                        latest_file = file
+                # Add directories
+                for dir_name in dirs:
+                    dir_path = (
+                        os.path.join(rel_path, dir_name) if rel_path else dir_name
+                    )
+                    file_list.append(f"📁 {dir_path}/")
 
-            if latest_file:
-                return latest_file
-            else:
-                return "No files found."
+                # Add files with sizes
+                for file_name in files:
+                    file_path = os.path.join(root, file_name)
+                    file_size = os.path.getsize(file_path)
 
-        elif operation == "extract_text_patterns":
-            # Extract all email addresses from text files
-            pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-            matches = []
+                    # Format size
+                    if file_size < 1024:
+                        size_str = f"{file_size} B"
+                    elif file_size < 1024 * 1024:
+                        size_str = f"{file_size/1024:.1f} KB"
+                    else:
+                        size_str = f"{file_size/(1024*1024):.1f} MB"
 
-            for root, _, files in os.walk(temp_dir):
-                for file in files:
-                    if file.endswith(".txt"):
-                        file_path = os.path.join(root, file)
-                        try:
-                            with open(file_path, "r") as f:
-                                content = f.read()
-                                found = re.findall(pattern, content)
-                                matches.extend(found)
-                        except Exception:
-                            # Skip files that can't be read as text
-                            pass
+                    file_rel_path = (
+                        os.path.join(rel_path, file_name) if rel_path else file_name
+                    )
+                    file_list.append(f"📄 {file_rel_path} ({size_str})")
 
-            return json.dumps(list(set(matches)))  # Return unique matches
+            # Format the response
+            if not file_list:
+                return "The zip file is empty."
+
+            return "Contents of the zip file:\n\n" + "\n".join(file_list)
 
         else:
             return f"Unsupported operation: {operation}"
@@ -3544,3 +3545,113 @@ async def reconstruct_scrambled_image(
         import traceback
 
         return f"Error reconstructing image: {str(e)}\n{traceback.format_exc()}"
+
+
+async def analyze_sales_with_phonetic_clustering(
+    file_path: str, query_params: dict
+) -> str:
+    """
+    Analyze sales data with phonetic clustering to handle misspelled city names
+
+    Args:
+        file_path: Path to the sales data JSON file
+        query_params: Dictionary containing query parameters (product, city, min_sales, etc.)
+
+    Returns:
+        Analysis results as a string
+    """
+    try:
+        import json
+        import pandas as pd
+        from jellyfish import soundex, jaro_winkler_similarity
+
+        # Load the sales data
+        with open(file_path, "r") as f:
+            sales_data = json.load(f)
+
+        # Convert to DataFrame for easier analysis
+        df = pd.DataFrame(sales_data)
+
+        # Extract query parameters
+        product = query_params.get("product")
+        city = query_params.get("city")
+        min_sales = query_params.get("min_sales", 0)
+
+        # Create a function to check if two city names are phonetically similar
+        def is_similar_city(city1, city2, threshold=0.85):
+            # Check exact match first
+            if city1.lower() == city2.lower():
+                return True
+
+            # Check soundex (phonetic algorithm)
+            if soundex(city1) == soundex(city2):
+                # If soundex matches, check similarity score for confirmation
+                similarity = jaro_winkler_similarity(city1.lower(), city2.lower())
+                return similarity >= threshold
+
+            return False
+
+        # Create a mapping of city name variations to canonical names
+        city_clusters = {}
+        canonical_cities = set()
+
+        # First pass: identify unique canonical city names
+        for record in sales_data:
+            city_name = record["city"]
+            found_match = False
+
+            for canonical in canonical_cities:
+                if is_similar_city(city_name, canonical):
+                    city_clusters[city_name] = canonical
+                    found_match = True
+                    break
+
+            if not found_match:
+                canonical_cities.add(city_name)
+                city_clusters[city_name] = city_name
+
+        # Add a new column with standardized city names
+        df["standardized_city"] = df["city"].map(city_clusters)
+
+        # Filter based on query parameters
+        filtered_df = df.copy()
+
+        if product:
+            filtered_df = filtered_df[filtered_df["product"] == product]
+
+        if city:
+            # Find all variations of the queried city
+            similar_cities = [
+                c for c in city_clusters.keys() if is_similar_city(c, city)
+            ]
+
+            # Filter by all similar city names
+            filtered_df = filtered_df[filtered_df["city"].isin(similar_cities)]
+
+        if min_sales:
+            filtered_df = filtered_df[filtered_df["sales"] >= min_sales]
+
+        # Calculate results
+        total_units = filtered_df["sales"].sum()
+        transaction_count = len(filtered_df)
+
+        # Generate detailed report
+        report = f"Analysis Results:\n"
+        report += f"Total units: {total_units}\n"
+        report += f"Transaction count: {transaction_count}\n"
+
+        if transaction_count > 0:
+            report += f"Average units per transaction: {total_units / transaction_count:.2f}\n"
+
+            # Show city variations if city filter was applied
+            if city:
+                city_variations = filtered_df["city"].unique()
+                report += f"City variations found: {', '.join(city_variations)}\n"
+
+        # Return the filtered data for further analysis if needed
+        return report
+
+    except Exception as e:
+        import traceback
+
+        return f"Error analyzing sales data: {str(e)}\n{traceback.format_exc()}"
